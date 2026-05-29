@@ -106,8 +106,6 @@ def _check_melody_variety(tracks: list[Track]) -> tuple[bool, str]:
     return True, ""
 
 
-# ── Nodo ─────────────────────────────────────────────────────
-
 def _check_melody_loop(tracks: list[Track], bpm: int) -> tuple[bool, str]:
     """Penaliza compases consecutivos con la misma secuencia de pitches."""
     melody = next((t for t in tracks if t.id == "melody"), None)
@@ -136,6 +134,80 @@ def _check_melody_loop(tracks: list[Track], bpm: int) -> tuple[bool, str]:
     return True, ""
 
 
+def _check_dynamic_range(
+    tracks: list[Track],
+    sections: list[str],
+) -> tuple[bool, str]:
+    """Velocity debe variar entre secciones (crescendo efectivo)."""
+    note_tracks = [t for t in tracks if t.events and t.role in ("lead", "rhythm", "bass")]
+    if not note_tracks or len(sections) < 2:
+        return True, ""
+
+    section_vel: dict[str, list[int]] = {s: [] for s in sections}
+    for track in note_tracks:
+        for e in track.events:
+            if e.type in ("note", "drum_hit") and e.section in section_vel:
+                section_vel[e.section].append(e.velocity)
+
+    avgs = {
+        s: sum(v) / len(v)
+        for s, v in section_vel.items()
+        if v
+    }
+    if len(avgs) < 2:
+        return True, ""
+
+    spread = max(avgs.values()) - min(avgs.values())
+    if spread < 8:
+        return False, (
+            f"Dinámica plana entre secciones (spread={spread:.1f}). "
+            "Se espera crescendo/decrescendo."
+        )
+    return True, ""
+
+
+def _check_intensity_arc(
+    tracks: list[Track],
+    sections: list[str],
+    narrative_sections: dict | None,
+) -> tuple[bool, str]:
+    """La sección más densa narrativamente no debe ser la más baja en velocity."""
+    if not narrative_sections or len(sections) < 2:
+        return True, ""
+
+    target_density = {
+        s: narrative_sections[s].density
+        for s in sections
+        if s in narrative_sections
+    }
+    if not target_density:
+        return True, ""
+
+    section_vel: dict[str, list[int]] = {s: [] for s in sections}
+    for track in tracks:
+        for e in track.events:
+            if e.type in ("note", "drum_hit") and e.section in section_vel:
+                section_vel[e.section].append(e.velocity)
+
+    actual_avg = {
+        s: sum(v) / len(v)
+        for s, v in section_vel.items()
+        if v
+    }
+    if len(actual_avg) < 2:
+        return True, ""
+
+    peak_target = max(target_density, key=target_density.get)
+    peak_actual = max(actual_avg, key=actual_avg.get)
+    if actual_avg.get(peak_target, 0) < actual_avg.get(peak_actual, 0) * 0.85:
+        if peak_target != peak_actual and target_density[peak_target] >= 0.65:
+            return False, (
+                f"Sección clave '{peak_target}' (density={target_density[peak_target]:.2f}) "
+                f"no alcanza la intensidad esperada vs '{peak_actual}'."
+            )
+    return True, ""
+
+
 # Checks con su peso en el score final
 CHECKS = [
     (_check_all_tracks_present,  0.22, "tracks_present"),
@@ -146,6 +218,8 @@ CHECKS = [
     (_check_drums_present,       0.10, "drums_present"),
     (_check_melody_variety,      0.05, "melody_variety"),
     (_check_melody_loop,         0.08, "melody_loop"),
+    (_check_dynamic_range,       0.05, "dynamic_range"),
+    (_check_intensity_arc,       0.05, "intensity_arc"),
 ]
 
 def validator_node(state: SongState) -> dict:
@@ -156,8 +230,12 @@ def validator_node(state: SongState) -> dict:
     tracks = state.get("tracks", [])
     structure = state["structure"]
     arrangement = state.get("arrangement")
+    narrative = state.get("narrative")
     proposal = state.get("technical_proposal")
     bpm = proposal.bpm if proposal else 120
+
+    from cadence.agent.nodes.narrative_apply import section_intent_map
+    intent_map = section_intent_map(narrative)
 
     errors = []
     warnings = []
@@ -176,6 +254,10 @@ def validator_node(state: SongState) -> dict:
             passed, msg = check_fn(tracks, structure.sections)
         elif check_fn == _check_melody_loop:
             passed, msg = check_fn(tracks, bpm)
+        elif check_fn == _check_dynamic_range:
+            passed, msg = check_fn(tracks, structure.sections)
+        elif check_fn == _check_intensity_arc:
+            passed, msg = check_fn(tracks, structure.sections, intent_map)
         else:
             passed, msg = check_fn(tracks)
 

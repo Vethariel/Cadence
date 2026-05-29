@@ -10,6 +10,7 @@ from cadence.agent.nodes.harmony import harmony_planner_node
 from cadence.agent.nodes.development import development_planner_node
 from cadence.agent.nodes.arrangement import arrangement_planner_node
 from cadence.agent.nodes.orchestra import compose_orchestra_node
+from cadence.agent.nodes.post_process import post_process_node
 from cadence.agent.nodes.validator import validator_node
 from cadence.agent.nodes.repair import repair_node, route_after_repair
 from cadence.agent.nodes.exporter import export_node
@@ -49,6 +50,7 @@ def build_graph():
     graph.add_node("development_planner", development_planner_node)
     graph.add_node("arrangement_planner",  arrangement_planner_node)
     graph.add_node("compose_orchestra",    compose_orchestra_node)
+    graph.add_node("post_process",         post_process_node)
     graph.add_node("validator",            validator_node)
     graph.add_node("repair",               repair_node)
     graph.add_node("export",               export_node)
@@ -62,7 +64,8 @@ def build_graph():
     graph.add_edge("harmony_planner",      "development_planner")
     graph.add_edge("development_planner",  "arrangement_planner")
     graph.add_edge("arrangement_planner",  "compose_orchestra")
-    graph.add_edge("compose_orchestra",    "validator")
+    graph.add_edge("compose_orchestra",    "post_process")
+    graph.add_edge("post_process",         "validator")
     graph.add_edge("export",               END)
 
     graph.add_conditional_edges(

@@ -4,15 +4,24 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from cadence.schemas.song_state import SongState
+from cadence.agent.nodes.narrative_apply import section_intent_map
+from cadence.music.crescendo import narrative_intensity_curve
 
 
 # ── Helpers ───────────────────────────────────────────────────
 
 def _compute_intensity_curve(state: SongState) -> list[float]:
-    """Calcula la curva de intensidad por sección basada en
-    velocidad promedio de drums y densidad de eventos."""
-    tracks = state.get("tracks", [])
+    """Curva de intensidad por sección (narrativa o inferida desde drums)."""
     structure = state["structure"]
+    narrative = state.get("narrative")
+
+    if narrative:
+        return narrative_intensity_curve(
+            structure.sections,
+            section_intent_map(narrative),
+        )
+
+    tracks = state.get("tracks", [])
     drums = next((t for t in tracks if t.id == "drums"), None)
 
     if not drums or not drums.events:
