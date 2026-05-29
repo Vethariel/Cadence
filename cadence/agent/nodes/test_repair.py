@@ -1,5 +1,5 @@
 from cadence.schemas.song_state import ValidationResult
-from cadence.agent.nodes.repair import determine_repair_target, failed_check_names
+from cadence.agent.nodes.repair import determine_repair_layers, failed_check_names
 
 
 def _state_with_errors(errors: list[str], retry_count: int = 0):
@@ -15,56 +15,59 @@ def test_melody_coverage_routes_to_melody():
     state = _state_with_errors([
         "[melody_coverage] Melodía cubre solo 40% de la duración total.",
     ])
-    assert determine_repair_target(state) == "melody_composer"
-    print("✓ melody_coverage → melody_composer")
+    assert determine_repair_layers(state) == ["melody"]
+    print("✓ melody_coverage → [melody]")
 
 
 def test_melody_variety_routes_to_melody():
     state = _state_with_errors([
         "[melody_variety] Melodía demasiado monótona: solo 1 pitch(es) únicos.",
     ])
-    assert determine_repair_target(state) == "melody_composer"
-    print("✓ melody_variety → melody_composer")
+    assert determine_repair_layers(state) == ["melody"]
+    print("✓ melody_variety → [melody]")
 
 
-def test_missing_drums_routes_to_rhythm():
+def test_missing_drums_routes_to_rhythm_layers():
     state = _state_with_errors([
         "[tracks_present] Tracks faltantes: {'drums'}",
     ])
-    assert determine_repair_target(state) == "rhythm_engine"
-    print("✓ tracks_present (drums) → rhythm_engine")
+    layers = set(determine_repair_layers(state))
+    assert "drums" in layers and "melody" in layers
+    print("✓ tracks_present (drums) → rhythm + melody layers")
 
 
 def test_missing_melody_routes_to_melody():
     state = _state_with_errors([
         "[tracks_present] Tracks faltantes: {'melody'}",
     ])
-    assert determine_repair_target(state) == "melody_composer"
-    print("✓ tracks_present (melody) → melody_composer")
+    assert determine_repair_layers(state) == ["melody"]
+    print("✓ tracks_present (melody) → [melody]")
 
 
 def test_drums_present_routes_to_rhythm():
     state = _state_with_errors([
         "[drums_present] Drums ausentes en demasiadas secciones: {'drop'}",
     ])
-    assert determine_repair_target(state) == "rhythm_engine"
-    print("✓ drums_present → rhythm_engine")
+    layers = set(determine_repair_layers(state))
+    assert "drums" in layers
+    print("✓ drums_present → drums layer")
 
 
 def test_pitch_range_routes_to_melody():
     state = _state_with_errors([
         "[pitch_range] 3 notas fuera de rango MIDI (21-108): [10, 12, 15]",
     ])
-    assert determine_repair_target(state) == "melody_composer"
-    print("✓ pitch_range → melody_composer")
+    assert determine_repair_layers(state) == ["melody"]
+    print("✓ pitch_range → [melody]")
 
 
 def test_timing_drums_routes_to_rhythm():
     state = _state_with_errors([
         "[timing_order] Track 'drums': eventos fuera de orden cronológico",
     ])
-    assert determine_repair_target(state) == "rhythm_engine"
-    print("✓ timing_order (drums) → rhythm_engine")
+    layers = set(determine_repair_layers(state))
+    assert "drums" in layers
+    print("✓ timing_order (drums) → rhythm layers")
 
 
 def test_failed_check_names_parser():
@@ -77,7 +80,7 @@ if __name__ == "__main__":
     test_failed_check_names_parser()
     test_melody_coverage_routes_to_melody()
     test_melody_variety_routes_to_melody()
-    test_missing_drums_routes_to_rhythm()
+    test_missing_drums_routes_to_rhythm_layers()
     test_missing_melody_routes_to_melody()
     test_drums_present_routes_to_rhythm()
     test_pitch_range_routes_to_melody()

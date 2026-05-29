@@ -1,11 +1,9 @@
-from cadence.schemas.song_state import SongState, ValidationResult
+from cadence.schemas.song_state import SongState
 
 
-# ── Prioridad de reparación por check fallido ─────────────────
-# Checks que requieren regenerar rhythm (drums + bass)
+RHYTHM_LAYERS = {"drums", "bass", "pad", "fx_riser", "perc_aux"}
+MELODY_LAYERS = {"melody"}
 RHYTHM_CHECKS = {"tracks_present", "drums_present", "timing_order", "velocity_range"}
-
-# Checks que requieren regenerar solo melodía
 MELODY_CHECKS = {"melody_coverage", "melody_variety", "pitch_range"}
 
 
@@ -17,52 +15,48 @@ def failed_check_names(errors: list[str]) -> set[str]:
     return names
 
 
-def determine_repair_target(state: SongState) -> str:
-    """
-    Decide qué nodo re-ejecutar según los checks que fallaron.
-    Retorna 'rhythm_engine' o 'melody_composer'.
-    """
+def determine_repair_layers(state: SongState) -> list[str]:
+    """Decide qué capas re-componer según checks fallidos."""
     validation = state.get("validation_result")
     if not validation or not validation.errors:
-        return "melody_composer"
+        return ["melody"]
 
     failed = failed_check_names(validation.errors)
     errors_text = " ".join(validation.errors).lower()
+    layers: set[str] = set()
 
-    # tracks_present: depende de qué track falta
     if "tracks_present" in failed:
         if "melody" in errors_text and "drums" not in errors_text and "bass" not in errors_text:
-            return "melody_composer"
-        return "rhythm_engine"
+            return ["melody"]
+        return list(RHYTHM_LAYERS | MELODY_LAYERS)
 
     if failed & {"drums_present"}:
-        return "rhythm_engine"
+        layers |= RHYTHM_LAYERS
 
     if failed & MELODY_CHECKS:
-        return "melody_composer"
+        layers |= MELODY_LAYERS
 
-    # timing / velocity: inferir del track mencionado en el mensaje
     if failed & {"timing_order", "velocity_range"}:
         if "melody" in errors_text:
-            return "melody_composer"
-        if "drums" in errors_text or "bass" in errors_text:
-            return "rhythm_engine"
-        return "rhythm_engine"
+            layers |= MELODY_LAYERS
+        else:
+            layers |= RHYTHM_LAYERS
 
-    return "melody_composer"
+    if not layers:
+        layers = MELODY_LAYERS
+
+    return sorted(layers)
 
 
 def repair_node(state: SongState) -> dict:
-    """
-    Incrementa retry_count y registra el nodo destino de reparación.
-    """
-    target = determine_repair_target(state)
+    """Incrementa retry_count y registra capas a re-componer."""
+    layers = determine_repair_layers(state)
     return {
         "retry_count": state.get("retry_count", 0) + 1,
-        "repair_target": target,
+        "repair_target": "compose_orchestra",
+        "repair_layers": layers,
     }
 
 
 def route_after_repair(state: SongState) -> str:
-    """Enruta al nodo correcto según repair_target."""
-    return state.get("repair_target") or "melody_composer"
+    return state.get("repair_target") or "compose_orchestra"

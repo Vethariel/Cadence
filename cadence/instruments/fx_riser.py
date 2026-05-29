@@ -1,0 +1,103 @@
+"""FX de transición — risers y sweeps en último compás de sección."""
+
+from cadence.instruments.context import ComposeContext
+from cadence.instruments.registry import InstrumentDefinition, register
+from cadence.agent.nodes.narrative_apply import section_intent_map
+from cadence.schemas.song_state import RhythmEvent, Track
+
+FX_TRANSITIONS = {"riser", "filter_sweep", "pickup"}
+DRUM_MIDI = {"snare": 38, "hihat": 42}
+
+
+def _ms_per_step(bpm: int) -> float:
+    return (60000 / bpm) / 4
+
+
+def _compose_fx_riser(ctx: ComposeContext) -> Track | None:
+    structure = ctx.state["structure"]
+    narrative = ctx.state.get("narrative")
+    if not narrative:
+        return None
+
+    intent_map = section_intent_map(narrative)
+    active = set(ctx.active_sections())
+    step_ms = _ms_per_step(ctx.bpm)
+    steps_per_bar = 16
+    events: list[RhythmEvent] = []
+    current_t = 0.0
+    beat_index = 0
+
+    for section in structure.sections:
+        bars = structure.bars_per_section.get(section, 4)
+        intent = intent_map.get(section)
+
+        if section not in active or not intent or intent.transition_out not in FX_TRANSITIONS:
+            current_t += bars * steps_per_bar * step_ms
+            beat_index += bars * steps_per_bar
+            continue
+
+        for bar_idx in range(bars):
+            if bar_idx == bars - 1:
+                t_bar = current_t
+                trans = intent.transition_out
+                if trans == "riser":
+                    for step in range(steps_per_bar):
+                        pitch = 48 + int(step * 1.5)
+                        vel = 40 + int(step / steps_per_bar * 80)
+                        events.append(RhythmEvent(
+                            t=int(t_bar + step * step_ms),
+                            type="note",
+                            pitch=min(84, pitch),
+                            duration_ms=int(step_ms * 0.8),
+                            velocity=min(127, vel),
+                            beat_index=beat_index + step,
+                            section=section,
+                        ))
+                elif trans == "filter_sweep":
+                    for step in range(steps_per_bar):
+                        pitch = 36 + step * 2
+                        events.append(RhythmEvent(
+                            t=int(t_bar + step * step_ms),
+                            type="note",
+                            pitch=min(72, pitch),
+                            duration_ms=int(step_ms * 0.6),
+                            velocity=30 + step * 5,
+                            beat_index=beat_index + step,
+                            section=section,
+                        ))
+                elif trans == "pickup":
+                    for step in (8, 10, 12, 14, 15):
+                        events.append(RhythmEvent(
+                            t=int(t_bar + step * step_ms),
+                            type="drum_hit",
+                            pitch=DRUM_MIDI["snare"],
+                            duration_ms=int(step_ms * 0.7),
+                            velocity=70 + step * 3,
+                            beat_index=beat_index + step,
+                            section=section,
+                        ))
+
+            current_t += steps_per_bar * step_ms
+            beat_index += steps_per_bar
+
+    if not events:
+        return None
+
+    return Track(
+        id="fx_riser",
+        instrument_id="fx_riser",
+        instrument="FX Riser",
+        midi_channel=3,
+        role="fx",
+        events=events,
+    )
+
+
+register(InstrumentDefinition(
+    instrument_id="fx_riser",
+    display_name="FX Riser",
+    role="fx",
+    midi_channel=3,
+    requires_llm=False,
+    compose=_compose_fx_riser,
+))

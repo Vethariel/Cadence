@@ -17,6 +17,18 @@ function makeSynth(role) {
         envelope: { attack: 0.01, decay: 0.2, sustain: 0.8, release: 0.1 },
       }).toDestination()
 
+    case 'pad':
+      return new Tone.PolySynth(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.8, decay: 0.3, sustain: 0.7, release: 1.2 },
+      }).toDestination()
+
+    case 'fx':
+      return new Tone.Synth({
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.05, decay: 0.2, sustain: 0.3, release: 0.4 },
+      }).toDestination()
+
     case 'rhythm':
       return new Tone.MembraneSynth({
         pitchDecay: 0.05,
@@ -67,12 +79,12 @@ export async function startPlayback(rsong) {
   const masterGain = new Tone.Gain(0.7).connect(analyser).toDestination()
 
   for (const track of rsong.tracks) {
-    const synth = makeSynth(track.role)
+    const synth = makeSynth(track.role === 'fx' ? 'fx' : track.role)
     synth.disconnect()
     synth.connect(masterGain)
 
     // Volumen por rol
-    const vol = { lead: -8, bass: -6, rhythm: -10 }
+    const vol = { lead: -8, bass: -6, rhythm: -10, pad: -14, fx: -12 }
     synth.volume.value = vol[track.role] ?? -8
 
     const events = track.events.map(e => {
@@ -83,9 +95,16 @@ export async function startPlayback(rsong) {
     const part = new Tone.Part((time, event) => {
       const durationSec = Math.max(0.05, event.duration_ms / 1000)
 
-      if (track.role === 'rhythm') {
+      if (track.role === 'rhythm' || (track.instrument_id === 'perc_aux')) {
         synth.triggerAttackRelease(
           midiToDrumNote(event.pitch),
+          durationSec,
+          time,
+          event.velocity / 127,
+        )
+      } else if (track.role === 'pad' && event.type === 'chord') {
+        synth.triggerAttackRelease(
+          midiToFreq(event.pitch),
           durationSec,
           time,
           event.velocity / 127,

@@ -1,12 +1,21 @@
-from cadence.schemas.song_state import SongState, ValidationResult, Track
+from cadence.schemas.song_state import SongState, ValidationResult, Track, ArrangementPlan
 
 
 # ── Checks individuales ───────────────────────────────────────
 # Cada check retorna (passed: bool, message: str)
 
-def _check_all_tracks_present(tracks: list[Track]) -> tuple[bool, str]:
+def _required_layer_ids(arrangement: ArrangementPlan | None) -> set[str]:
+    if arrangement:
+        return set(arrangement.required_layers)
+    return {"drums", "bass", "melody"}
+
+
+def _check_all_tracks_present(
+    tracks: list[Track],
+    arrangement: ArrangementPlan | None = None,
+) -> tuple[bool, str]:
     ids = {t.id for t in tracks}
-    required = {"drums", "bass", "melody"}
+    required = _required_layer_ids(arrangement)
     missing = required - ids
     if missing:
         return False, f"Tracks faltantes: {missing}"
@@ -117,14 +126,16 @@ def validator_node(state: SongState) -> dict:
     """
     tracks = state.get("tracks", [])
     structure = state["structure"]
+    arrangement = state.get("arrangement")
 
     errors = []
     warnings = []
     score = 1.0
 
     for check_fn, weight, name in CHECKS:
-        # Algunos checks necesitan argumentos extra
-        if check_fn == _check_melody_coverage:
+        if check_fn == _check_all_tracks_present:
+            passed, msg = check_fn(tracks, arrangement)
+        elif check_fn == _check_melody_coverage:
             passed, msg = check_fn(
                 tracks,
                 structure.estimated_duration_ms,

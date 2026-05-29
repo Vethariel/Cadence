@@ -4,8 +4,18 @@ from pydantic import BaseModel, Field
 import math
 
 from cadence.config import settings
-from cadence.schemas.song_state import SongState, Track, RhythmEvent
+from cadence.schemas.song_state import SongNarrative, SongState, Track, RhythmEvent
 from cadence.agent.nodes.repair import failed_check_names
+from cadence.agent.nodes.narrative_apply import (
+    melody_should_play,
+    narrative_melody_hint,
+    section_intent_map,
+)
+from cadence.music.harmony_theory import (
+    chord_tones_as_degrees,
+    harmony_summary_for_section,
+    section_harmony_map,
+)
 
 
 # ── Escalas ───────────────────────────────────────────────────
@@ -91,6 +101,32 @@ def _fix_pattern_steps(pattern: list[MelodyNote]) -> list[MelodyNote]:
         pattern = fixed
     return pattern
 
+def _vary_pattern_for_bar(
+    pattern: list[MelodyNote],
+    bar_idx: int,
+    global_motif: list[int],
+) -> list[MelodyNote]:
+    """Variación intra-sección A / A' / B usando el motivo global."""
+    if bar_idx % 2 == 1:
+        return [
+            note.model_copy(update={"scale_degree": (note.scale_degree + 1) % 7})
+            if not note.is_rest else note
+            for note in pattern
+        ]
+    if global_motif and bar_idx % 4 == 2:
+        varied = list(pattern)
+        note_idx = 0
+        for i, note in enumerate(varied):
+            if note.is_rest:
+                continue
+            if note_idx < len(global_motif):
+                varied[i] = note.model_copy(update={
+                    "scale_degree": global_motif[note_idx] % 7,
+                })
+                note_idx += 1
+        return varied
+    return pattern
+
 def _pattern_to_events(
     pattern: list[MelodyNote],
     section: str,
@@ -99,6 +135,7 @@ def _pattern_to_events(
     bpm: int,
     scale_pitches: list[int],
     beat_index_start: int,
+    global_motif: list[int] | None = None,
 ) -> tuple[list[RhythmEvent], float, int]:
     """Repite el patrón de 1 bar para cubrir todos los compases de la sección."""
     step_ms = _ms_per_step(bpm)
@@ -106,9 +143,11 @@ def _pattern_to_events(
     events = []
     current_t = start_t
     beat_index = beat_index_start
+    motif = global_motif or []
 
     for bar in range(bars):
-        for note in pattern:
+        bar_pattern = _vary_pattern_for_bar(pattern, bar, motif)
+        for note in bar_pattern:
             duration_ms = int(note.duration_steps * step_ms * 0.92)
             if not note.is_rest:
                 degree = max(0, min(6, note.scale_degree))
@@ -131,11 +170,16 @@ def _pattern_to_events(
 
 # ── Nodo ─────────────────────────────────────────────────────
 
-def melody_composer_node(state: SongState) -> dict:
+def compose_melody_track(state: SongState) -> Track:
+    """Genera el track de melodía (LLM). Usado por registry y nodo legacy."""
     intent = state["intent"]
     proposal = state.get("technical_proposal")
     structure = state["structure"]
     validation = state.get("validation_result")
+    narrative: SongNarrative | None = state.get("narrative")
+    harmony = state.get("harmony")
+    intent_map = section_intent_map(narrative)
+    global_motif = list(narrative.global_motif) if narrative else []
 
     if proposal:
         bpm = proposal.bpm
@@ -186,6 +230,47 @@ def melody_composer_node(state: SongState) -> dict:
         temperature=temperature,
     ).with_structured_output(MelodyComposerOutput)
 
+    narrative_block = ""
+    if narrative:
+        section_lines = []
+        for s in narrative.sections:
+            hint = narrative_melody_hint(s)
+            section_lines.append(
+                f"  - {s.id}: {hint}, transition_out={s.transition_out}"
+            )
+        motif_str = ", ".join(str(d) for d in global_motif) if global_motif else "none"
+        narrative_block = (
+            f"\nGuion narrativo:\n"
+            f"  logline: {narrative.logline}\n"
+            f"  arc: {narrative.arc_type}\n"
+            f"  global_motif (scale degrees): [{motif_str}]\n"
+            f"  Por sección:\n" + "\n".join(section_lines) + "\n"
+            f"Usa global_motif como base melódica en intro/verse; "
+            f"desarróllalo en climax/drop.\n"
+        )
+
+    harmony_block = ""
+    if harmony:
+        h_lines = []
+        for section_id in structure.sections:
+            summary = harmony_summary_for_section(harmony, section_id)
+            if summary:
+                sh = section_harmony_map(harmony).get(section_id)
+                chord_degrees = []
+                if sh:
+                    for c in sh.progression:
+                        chord_degrees.append(str(chord_tones_as_degrees(c)))
+                h_lines.append(
+                    f"  - {section_id}: progresión {summary} | "
+                    f"grados por acorde: {', '.join(chord_degrees)}"
+                )
+        harmony_block = (
+            f"\nPlan armónico ({harmony.key} {harmony.mode}):\n"
+            + "\n".join(h_lines) + "\n"
+            "Prioriza scale_degree que coincidan con los grados del acorde activo "
+            "(root, third, fifth). La melodía debe sonar consonante con bajo y pad.\n"
+        )
+
     system = SystemMessage(content=(
         "Eres un compositor experto en música electrónica para videojuegos.\n"
         "Tu tarea es componer UN PATRÓN DE 1 BAR (16 steps de 1/16) por sección.\n"
@@ -197,6 +282,8 @@ def melody_composer_node(state: SongState) -> dict:
         "- build-up/verse: notas medias (duration_steps 2), patrón repetitivo\n"
         "- drop/climax: notas cortas (duration_steps 1-2), denso y agresivo\n"
         "- breakdown: mayoría silencios (is_rest=True), muy esparso\n"
+        f"{harmony_block}"
+        f"{narrative_block}"
         f"{variety_hint}\n"
         "Responde SOLO con el objeto estructurado, sin texto adicional."
     ))
@@ -223,6 +310,12 @@ def melody_composer_node(state: SongState) -> dict:
 
     for section in structure.sections:
         bars = structure.bars_per_section.get(section, 4)
+        section_intent = intent_map.get(section)
+
+        if not melody_should_play(section_intent):
+            current_t += bars * steps_per_bar * step_ms
+            beat_index += bars * steps_per_bar
+            continue
 
         if section in pattern_map:
             pattern = _fix_pattern_steps(pattern_map[section])
@@ -234,19 +327,24 @@ def melody_composer_node(state: SongState) -> dict:
                 bpm=bpm,
                 scale_pitches=scale_pitches,
                 beat_index_start=beat_index,
+                global_motif=global_motif,
             )
             all_events.extend(section_events)
         else:
             current_t += bars * steps_per_bar * step_ms
             beat_index += bars * steps_per_bar
 
-    melody_track = Track(
+    return Track(
         id="melody",
         instrument="Lead Synth",
+        instrument_id="melody",
         midi_channel=0,
         role="lead",
         events=all_events,
     )
 
+
+def melody_composer_node(state: SongState) -> dict:
+    melody_track = compose_melody_track(state)
     existing_tracks = [t for t in state.get("tracks", []) if t.id != "melody"]
     return {"tracks": existing_tracks + [melody_track]}

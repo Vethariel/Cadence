@@ -6,3 +6,4 @@ __pycache__/
 cadence-ui/node_modules/
 cadence-ui/dist/
 output/*
+examples

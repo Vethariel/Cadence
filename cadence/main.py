@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
 
-from cadence.agent import cadence_graph
+from cadence.agent.graph import cadence_graph
 
 app = FastAPI(title="Cadence API", version="0.1.0")
 
@@ -47,10 +47,15 @@ async def generate(request: GenerateRequest):
         "messages": [HumanMessage(content=request.prompt)],
         "intent": None,
         "technical_proposal": None,
+        "narrative": None,
+        "harmony": None,
+        "arrangement": None,
         "structure": None,
         "tracks": [],
         "validation_result": None,
         "retry_count": 0,
+        "repair_target": None,
+        "repair_layers": None,
         "export_path": None,
         "rsong_data": None,
     }

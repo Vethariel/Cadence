@@ -67,6 +67,37 @@ def _build_context(state: SongState) -> str:
     )
 
 
+def _build_narrative_context(state: SongState) -> str:
+    narrative = state.get("narrative")
+    if not narrative:
+        return ""
+
+    lines = [
+        f"Guion narrativo: {narrative.logline}",
+        f"Arco: {narrative.arc_type}",
+        f"Motivo global (grados 0-6): {narrative.global_motif}",
+        "",
+        "Intención dramática por sección:",
+    ]
+    for s in narrative.sections:
+        lines.append(
+            f"  • {s.id}: role={s.narrative_role}, emotion={s.emotional_target}, "
+            f"density={s.density:.2f}, harmonic_tension={s.harmonic_tension:.2f}, "
+            f"rhythmic_complexity={s.rhythmic_complexity:.2f}, "
+            f"transition_out={s.transition_out}"
+        )
+    lines.append("")
+    lines.append(
+        "Usa density para asignar compases: "
+        "density >= 0.7 → secciones largas (16-32 bars); "
+        "0.4-0.7 → medias (8-16 bars); "
+        "< 0.4 → cortas (4-8 bars). "
+        "Secciones con transition_out distinto de 'none' pueden usar +2 bars "
+        "para el material de transición."
+    )
+    return "\n".join(lines)
+
+
 # ── Nodo ─────────────────────────────────────────────────────
 
 def structure_planner_node(state: SongState) -> dict:
@@ -76,6 +107,7 @@ def structure_planner_node(state: SongState) -> dict:
     """
 
     context = _build_context(state)
+    narrative_ctx = _build_narrative_context(state)
 
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
@@ -91,11 +123,14 @@ def structure_planner_node(state: SongState) -> dict:
         "que el array sections, sin agregar ni omitir ninguna. "
         "Calcula estimated_duration_ms así: "
         "(total_bars * beats_per_bar * 60000) / BPM. "
+        "Si hay guion narrativo, respeta density y narrative_role al decidir "
+        "cuántos compases tiene cada sección. "
         "Responde SOLO con el objeto estructurado."
     ))
 
     human = HumanMessage(content=(
         f"{context}\n\n"
+        f"{narrative_ctx}\n"
         "Define la estructura completa de la canción. "
         "Cada sección debe tener un número de compases apropiado para su rol dramático."
     ))

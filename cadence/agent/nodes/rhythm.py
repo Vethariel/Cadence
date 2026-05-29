@@ -1,4 +1,18 @@
-from cadence.schemas.song_state import SongState, Track, RhythmEvent
+from cadence.schemas.song_state import HarmonyPlan, SongNarrative, SongState, Track, RhythmEvent
+from cadence.agent.nodes.narrative_apply import (
+    bar_variant_step,
+    bass_should_play,
+    drum_velocities,
+    hihat_active,
+    section_intent_map,
+    snare_ghost_velocity,
+    transition_events,
+)
+from cadence.music.harmony_theory import (
+    chord_at_bar,
+    chord_pitches,
+    section_harmony_map,
+)
 
 
 # ── Patrones de batería por estilo ────────────────────────────
@@ -81,6 +95,7 @@ def _generate_drum_track(
     bars_per_section: dict[str, int],
     bpm: int,
     genre_tags: list[str],
+    narrative: SongNarrative | None = None,
 ) -> Track:
     pattern = _select_pattern(genre_tags)
     step_ms = _ms_per_step(bpm)
@@ -88,24 +103,62 @@ def _generate_drum_track(
     events = []
     beat_index = 0
     current_t = 0
+    intent_map = section_intent_map(narrative)
 
     for section in sections:
         bars = bars_per_section.get(section, 4)
-        velocities = SECTION_VELOCITY.get(section, SECTION_VELOCITY["default"])
+        intent = intent_map.get(section)
+        velocities = drum_velocities(section, intent, SECTION_VELOCITY)
 
-        for _ in range(bars):
-            for step in range(steps_per_bar):
+        for bar_idx in range(bars):
+            is_last_bar = bar_idx == bars - 1
+            transition_out = (
+                intent.transition_out
+                if intent and is_last_bar and intent.transition_out != "none"
+                else "none"
+            )
+            max_step = 8 if transition_out == "cut" else steps_per_bar
+
+            for step in range(max_step):
+                eff_step = bar_variant_step(step, bar_idx, intent)
                 for drum_name, drum_pattern in pattern.items():
-                    if drum_pattern[step] == 1:
+                    if drum_pattern[eff_step] != 1:
+                        continue
+                    if drum_name == "hihat" and not hihat_active(eff_step, intent):
+                        continue
+                    events.append(RhythmEvent(
+                        t=int(current_t + step * step_ms),
+                        type="drum_hit",
+                        pitch=DRUM_MIDI.get(drum_name, 36),
+                        duration_ms=int(step_ms * 0.9),
+                        velocity=velocities.get(drum_name, 80),
+                        beat_index=beat_index + step,
+                        section=section,
+                    ))
+                    ghost = snare_ghost_velocity(
+                        velocities.get("snare", 80), eff_step, intent,
+                    )
+                    if drum_name == "snare" and ghost is not None:
                         events.append(RhythmEvent(
                             t=int(current_t + step * step_ms),
                             type="drum_hit",
-                            pitch=DRUM_MIDI.get(drum_name, 36),
-                            duration_ms=int(step_ms * 0.9),
-                            velocity=velocities.get(drum_name, 80),
+                            pitch=DRUM_MIDI["snare"],
+                            duration_ms=int(step_ms * 0.5),
+                            velocity=ghost,
                             beat_index=beat_index + step,
                             section=section,
                         ))
+
+            if transition_out not in ("none", "cut"):
+                events.extend(transition_events(
+                    t_bar_start=current_t,
+                    step_ms=step_ms,
+                    transition_out=transition_out,
+                    section=section,
+                    beat_index=beat_index,
+                    drum_midi=DRUM_MIDI,
+                ))
+
             current_t += steps_per_bar * step_ms
             beat_index += steps_per_bar
 
@@ -124,6 +177,8 @@ def _generate_bass_track(
     bpm: int,
     key: str,
     mode: str,
+    narrative: SongNarrative | None = None,
+    harmony: HarmonyPlan | None = None,
 ) -> Track:
     step_ms = _ms_per_step(bpm)
     steps_per_bar = 16
@@ -132,29 +187,61 @@ def _generate_bass_track(
     events = []
     beat_index = 0
     current_t = 0
+    intent_map = section_intent_map(narrative)
+    harmony_map = section_harmony_map(harmony)
 
     for section in sections:
-        # En breakdown el bajo descansa
-        if section == "breakdown":
-            bars = bars_per_section.get(section, 4)
+        bars = bars_per_section.get(section, 4)
+        intent = intent_map.get(section)
+
+        if not bass_should_play(section, intent):
             current_t += bars * steps_per_bar * step_ms
             beat_index += bars * steps_per_bar
             continue
 
-        bars = bars_per_section.get(section, 4)
-        for _ in range(bars):
-            for step in range(steps_per_bar):
-                interval = intervals[step % len(intervals)]
-                if interval > 0 or step % 4 == 0:
+        density = intent.density if intent else 0.7
+        base_vel = int(55 + density * 45)
+        section_h = harmony_map.get(section)
+
+        for bar_idx in range(bars):
+            octave_shift = 12 if bar_idx % 2 == 1 and (intent and intent.rhythmic_complexity >= 0.5) else 0
+
+            if section_h:
+                chord = chord_at_bar(section_h, bar_idx)
+                tones = chord_pitches(key, mode, chord, octave=2)
+                root_pitch = tones[0]
+                fifth_pitch = tones[2] if len(tones) > 2 else root_pitch + 7
+                bass_pattern = [
+                    (0, root_pitch, base_vel),
+                    (4, root_pitch, max(45, base_vel - 15)),
+                    (8, fifth_pitch, max(45, base_vel - 10)),
+                    (12, root_pitch, max(45, base_vel - 15)),
+                ]
+                for step, pitch, vel in bass_pattern:
                     events.append(RhythmEvent(
                         t=int(current_t + step * step_ms),
                         type="note",
-                        pitch=root_midi + interval,
+                        pitch=pitch + octave_shift,
                         duration_ms=int(step_ms * 1.8),
-                        velocity=90 if step % 4 == 0 else 70,
+                        velocity=vel,
                         beat_index=beat_index + step,
                         section=section,
                     ))
+            else:
+                for step in range(steps_per_bar):
+                    interval = intervals[step % len(intervals)]
+                    if interval > 0 or step % 4 == 0:
+                        vel = base_vel if step % 4 == 0 else max(45, base_vel - 20)
+                        events.append(RhythmEvent(
+                            t=int(current_t + step * step_ms),
+                            type="note",
+                            pitch=root_midi + interval + octave_shift,
+                            duration_ms=int(step_ms * 1.8),
+                            velocity=vel,
+                            beat_index=beat_index + step,
+                            section=section,
+                        ))
+
             current_t += steps_per_bar * step_ms
             beat_index += steps_per_bar
 
@@ -190,11 +277,15 @@ def rhythm_engine_node(state: SongState) -> dict:
         mode = "minor"
         genre_tags = intent.style_tags
 
+    narrative = state.get("narrative")
+    harmony = state.get("harmony")
+
     drums = _generate_drum_track(
         sections=structure.sections,
         bars_per_section=structure.bars_per_section,
         bpm=bpm,
         genre_tags=genre_tags,
+        narrative=narrative,
     )
 
     bass = _generate_bass_track(
@@ -203,6 +294,9 @@ def rhythm_engine_node(state: SongState) -> dict:
         bpm=bpm,
         key=key,
         mode=mode,
+        narrative=narrative,
+        harmony=harmony,
     )
 
-    return {"tracks": [drums, bass]}
+    existing = [t for t in state.get("tracks", []) if t.id not in ("drums", "bass")]
+    return {"tracks": existing + [drums, bass]}

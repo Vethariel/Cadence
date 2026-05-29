@@ -81,6 +81,9 @@ def _build_rsong(state: SongState) -> dict:
     intent = state["intent"]
     proposal = state.get("technical_proposal")
     structure = state["structure"]
+    narrative = state.get("narrative")
+    harmony = state.get("harmony")
+    arrangement = state.get("arrangement")
     validation = state["validation_result"]
 
     if proposal:
@@ -120,6 +123,45 @@ def _build_rsong(state: SongState) -> dict:
             "energy_level": energy_level,
             "hit_objects_hint": intent.use_case in ("game", "loop"),
             "sections": structure.sections,
+            **(
+                {
+                    "arrangement": {
+                        "required_layers": arrangement.required_layers,
+                        "layers": [l.model_dump() for l in arrangement.layers],
+                    }
+                }
+                if arrangement
+                else {}
+            ),
+            **(
+                {
+                    "harmony": {
+                        "key": harmony.key,
+                        "mode": harmony.mode,
+                        "sections": [
+                            {
+                                "section_id": s.section_id,
+                                "progression": [c.model_dump() for c in s.progression],
+                            }
+                            for s in harmony.sections
+                        ],
+                    }
+                }
+                if harmony
+                else {}
+            ),
+            **(
+                {
+                    "narrative": {
+                        "logline": narrative.logline,
+                        "arc_type": narrative.arc_type,
+                        "global_motif": narrative.global_motif,
+                        "sections": [s.model_dump() for s in narrative.sections],
+                    }
+                }
+                if narrative
+                else {}
+            ),
         },
         "validation": {
             "score": validation.score,
@@ -129,6 +171,7 @@ def _build_rsong(state: SongState) -> dict:
             {
                 "id": track.id,
                 "instrument": track.instrument,
+                "instrument_id": track.instrument_id or track.id,
                 "midi_channel": track.midi_channel,
                 "role": track.role,
                 "event_count": len(track.events),
