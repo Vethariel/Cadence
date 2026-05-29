@@ -94,6 +94,7 @@ def _build_rsong(state: SongState) -> dict:
     harmony = state.get("harmony")
     arrangement = state.get("arrangement")
     development = state.get("development")
+    strategies = state.get("strategies")
     validation = state["validation_result"]
 
     if proposal:
@@ -133,6 +134,13 @@ def _build_rsong(state: SongState) -> dict:
             "energy_level": energy_level,
             "hit_objects_hint": intent.use_case in ("game", "loop"),
             "sections": structure.sections,
+            **(
+                {
+                    "strategies": strategies.model_dump(),
+                }
+                if strategies
+                else {}
+            ),
             **(
                 {
                     "development": {

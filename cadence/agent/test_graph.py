@@ -39,7 +39,9 @@ def test_graph_non_technical():
     assert final_state["narrative"] is not None
     assert final_state["harmony"] is not None
     assert final_state["development"] is not None
+    assert final_state["strategies"] is not None
     assert final_state["generation_seed"] > 0
+    assert final_state["strategies"].drum_pattern
     assert final_state["arrangement"] is not None
     assert len(final_state["arrangement"].layers) >= 3
     assert len(final_state["harmony"].sections) == len(final_state["structure"].sections)
@@ -93,7 +95,9 @@ def test_graph_technical():
     assert final_state["narrative"] is not None
     assert final_state["harmony"] is not None
     assert final_state["development"] is not None
+    assert final_state["strategies"] is not None
     assert final_state["generation_seed"] > 0
+    assert final_state["strategies"].drum_pattern
     assert final_state["arrangement"] is not None
     assert len(final_state["arrangement"].layers) >= 3
     assert len(final_state["harmony"].sections) == len(final_state["structure"].sections)

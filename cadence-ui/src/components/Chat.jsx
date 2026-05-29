@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useCadenceStore } from '../store'
+import { generateSong } from '../api'
+import { uid } from '../uid'
 
 const SUGGESTIONS = [
   'canción agresiva para un boss fight techno dubstep',
@@ -80,7 +82,7 @@ function TypingIndicator() {
   )
 }
 
-export default function Chat({ onResult }) {
+export default function Chat({ onResult, onOpenProductions }) {
   const [input, setInput] = useState('')
   const { messages, isGenerating, addMessage, setGenerating, setResult } =
     useCadenceStore()
@@ -110,18 +112,7 @@ export default function Chat({ onResult }) {
     addMessage('agent', 'analizando tu solicitud...')
 
     try {
-      const res = await fetch('/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: text }),
-      })
-
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.detail || 'error desconocido')
-      }
-
-      const data = await res.json()
+      const data = await generateSong(text)
 
       // Reemplazar el mensaje "analizando..." con el resultado
       useCadenceStore.setState(s => ({
@@ -134,7 +125,7 @@ export default function Chat({ onResult }) {
             `  secciones  : ${data.sections.join(' → ')}\n` +
             `  duración   : ${(data.duration_ms / 1000).toFixed(1)}s\n` +
             `  score      : ${data.validation_score}`,
-          id: Date.now(),
+          id: uid(),
         })
       }))
 
@@ -145,7 +136,7 @@ export default function Chat({ onResult }) {
         duration_ms: data.duration_ms,
         knowledge_level: data.knowledge_level,
         validation_score: data.validation_score,
-      })
+      }, data.export_path?.split('/').pop() ?? null)
 
       onResult?.()
 
@@ -154,7 +145,7 @@ export default function Chat({ onResult }) {
         messages: s.messages.slice(0, -1).concat({
           role: 'system',
           content: `✗ error: ${err.message}`,
-          id: Date.now(),
+          id: uid(),
         })
       }))
     } finally {
@@ -178,15 +169,34 @@ export default function Chat({ onResult }) {
 
       {/* Header */}
       <div style={{
-        fontFamily: 'Syne, sans-serif',
-        fontSize: '22px', fontWeight: 800,
-        letterSpacing: '-0.02em',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         marginBottom: '20px',
-        background: 'linear-gradient(135deg, #ff4d6d, #7c3aed)',
-        WebkitBackgroundClip: 'text',
-        WebkitTextFillColor: 'transparent',
       }}>
-        cadence
+        <div style={{
+          fontFamily: 'Syne, sans-serif',
+          fontSize: '22px', fontWeight: 800,
+          letterSpacing: '-0.02em',
+          background: 'linear-gradient(135deg, #ff4d6d, #7c3aed)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+        }}>
+          cadence
+        </div>
+        <button
+          onClick={onOpenProductions}
+          style={{
+            background: 'var(--surface2)',
+            border: '1px solid var(--border)',
+            borderRadius: '4px',
+            padding: '6px 12px',
+            color: 'var(--muted)',
+            fontFamily: 'Space Mono, monospace',
+            fontSize: '11px',
+            cursor: 'pointer',
+          }}
+        >
+          mis producciones
+        </button>
       </div>
 
       {/* Messages */}

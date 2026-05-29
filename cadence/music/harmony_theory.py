@@ -92,8 +92,13 @@ def progression_for_role(
     narrative_role: str,
     harmonic_tension: float,
     mode: str,
+    harmony_pool: str | None = None,
 ) -> list[tuple[int, str]]:
-    templates = PROGRESSIONS_MINOR if mode == "minor" else PROGRESSIONS_MAJOR
+    if harmony_pool:
+        from cadence.music.strategy_pools import get_harmony_templates
+        templates = get_harmony_templates(mode, harmony_pool)
+    else:
+        templates = PROGRESSIONS_MINOR if mode == "minor" else PROGRESSIONS_MAJOR
     base = ROLE_TO_TEMPLATE.get(narrative_role, "default")
     if harmonic_tension >= 0.75 and narrative_role in ("tension", "climax"):
         base = "tension"
@@ -127,8 +132,9 @@ def build_section_harmony(
     harmonic_tension: float,
     mode: str,
     bars_per_chord: int = 4,
+    harmony_pool: str | None = None,
 ) -> SectionHarmony:
-    raw = progression_for_role(narrative_role, harmonic_tension, mode)
+    raw = progression_for_role(narrative_role, harmonic_tension, mode, harmony_pool)
     progression = [
         ChordSpec(root_degree=deg, quality=qual, bars=bars_per_chord)
         for deg, qual in raw
@@ -142,6 +148,7 @@ def build_harmony_plan(
     mode: str,
     narrative_sections: dict | None = None,
     bars_per_chord_default: int = 4,
+    harmony_pool: str | None = None,
 ) -> HarmonyPlan:
     """Genera HarmonyPlan determinista desde estructura + narrativa."""
     section_harmonies: list[SectionHarmony] = []
@@ -158,6 +165,7 @@ def build_harmony_plan(
             harmonic_tension=tension,
             mode=mode,
             bars_per_chord=bars_per_chord,
+            harmony_pool=harmony_pool,
         ))
 
     return HarmonyPlan(

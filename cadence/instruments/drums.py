@@ -6,12 +6,14 @@ from cadence.schemas.song_state import Track
 
 def _compose_drums(ctx: ComposeContext) -> Track:
     structure = ctx.state["structure"]
+    strategies = ctx.state.get("strategies")
     track = _generate_drum_track(
         sections=structure.sections,
         bars_per_section=structure.bars_per_section,
         bpm=ctx.bpm,
         genre_tags=ctx.genre_tags,
         narrative=ctx.state.get("narrative"),
+        drum_pattern_id=strategies.drum_pattern if strategies else None,
     )
     return track.model_copy(update={"instrument_id": "drums"})
 

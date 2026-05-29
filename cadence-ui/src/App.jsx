@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useCadenceStore } from './store'
 import Chat from './components/Chat'
+import Productions from './components/Productions'
 import Player from './components/Player'
 import Visualizer from './components/Visualizer'
 import FrequencyAnalyzer from './components/FrequencyAnalyzer'
@@ -8,7 +9,12 @@ import './index.css'
 
 export default function App() {
   const rsong = useCadenceStore(s => s.rsong)
+  const view = useCadenceStore(s => s.view)
   const [showVisualizer, setShowVisualizer] = useState(false)
+
+  function openVisualizer() {
+    setShowVisualizer(true)
+  }
 
   return (
     <div style={{
@@ -21,11 +27,17 @@ export default function App() {
     }}>
 
       <div style={{
-        borderRight: rsong && showVisualizer
-          ? '1px solid var(--border)' : 'none',
+        borderRight: rsong && showVisualizer ? '1px solid var(--border)' : 'none',
         height: '100vh', overflow: 'hidden',
       }}>
-        <Chat onResult={() => setShowVisualizer(true)} />
+        {view === 'productions' ? (
+          <Productions onSelect={openVisualizer} />
+        ) : (
+          <Chat
+            onResult={openVisualizer}
+            onOpenProductions={() => useCadenceStore.getState().setView('productions')}
+          />
+        )}
       </div>
 
       {rsong && showVisualizer && (
@@ -35,8 +47,6 @@ export default function App() {
           overflow: 'hidden',
         }}>
           <Visualizer />
-
-          {/* Analizador de frecuencias — esquina superior derecha */}
           <FrequencyAnalyzer />
 
           <button

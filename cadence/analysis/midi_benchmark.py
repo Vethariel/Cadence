@@ -1,9 +1,11 @@
 """
-Benchmark: compara MIDIs de referencia contra métricas objetivo de Cadence.
+Benchmark: compara MIDIs de referencia y salidas Cadence (.rsong → .mid).
 
 Uso:
     uv run python -m cadence.analysis.midi_benchmark
     uv run python -m cadence.analysis.midi_benchmark examples/ASGORE.mid
+    uv run python -m cadence.analysis.midi_benchmark output/*.rsong
+    uv run python -m cadence.analysis.midi_benchmark --compare
 """
 
 from __future__ import annotations
@@ -13,10 +15,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import statistics
 import sys
+import tempfile
 
 from music21 import chord, converter, note
 
+from cadence.analysis.rsong_to_midi import convert_rsong_file
+
 EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples"
+OUTPUT_DIR = Path(__file__).resolve().parents[2] / "output"
 
 # Objetivos derivados del análisis de referencias (promedio ASGORE + Spider Dance)
 TARGETS = {
@@ -59,9 +65,24 @@ class MidiMetrics:
 
 
 def _find_lead_part(parts: list) -> tuple[str, list] | None:
+    preferred_names = ("lead melody", "melody", "lead synth", "lead")
+    for preferred in preferred_names:
+        for p in parts:
+            name = str(p.partName or p.id or "").lower()
+            if preferred not in name:
+                continue
+            if "echo" in name or "arp" in name or "counter" in name:
+                continue
+            notes = [el for el in p.flatten().notes if isinstance(el, note.Note)]
+            if len(notes) >= 8:
+                return (str(p.partName or p.id)[:40], notes)
+
     best: tuple[str, list] | None = None
     best_score = 0
     for p in parts:
+        name = str(p.partName or p.id or "").lower()
+        if any(x in name for x in ("arp", "drum", "bass", "pad", "perc", "fx")):
+            continue
         notes = [el for el in p.flatten().notes if isinstance(el, note.Note)]
         if len(notes) < 20:
             continue
@@ -184,30 +205,78 @@ def analyze_midi(path: Path) -> MidiMetrics:
 
 
 def cadence_baseline() -> dict[str, float]:
-    """Estimación de métricas actuales de Cadence (sin LLM en melodía)."""
+    """Estimación histórica — preferir métricas reales de output/*.rsong si existen."""
     return {
-        "layers_active_mean": 4.5,
-        "layers_active_max": 5,
-        "melody_notes_per_bar": 4.0,
-        "melody_unique_pitches": 7.0,
-        "melody_bar_repeat_ratio": 0.0,  # A/A'/B evita repetición exacta
-        "melody_leap_ratio": 0.05,
-        "chord_changes_per_bar": 0.25,  # 1 acorde / 4 compases
-        "register_octaves_mean": 3.0,
-        "velocity_stdev": 26.0,
-        "notes_per_bar_stdev": 7.0,
-        "echo_layers": 0,
+        "layers_active_mean": 6.0,
+        "layers_active_max": 9,
+        "melody_notes_per_bar": 6.0,
+        "melody_unique_pitches": 12.0,
+        "melody_bar_repeat_ratio": 0.15,
+        "melody_leap_ratio": 0.12,
+        "chord_changes_per_bar": 0.5,
+        "register_octaves_mean": 3.5,
+        "velocity_stdev": 22.0,
+        "notes_per_bar_stdev": 15.0,
+        "echo_layers": 1,
     }
 
 
-def print_report(metrics: list[MidiMetrics]) -> None:
+def resolve_input_path(path: Path, temp_dir: Path | None = None) -> tuple[Path, Path | None]:
+    """
+    Resuelve .rsong → .mid temporal o permanente.
+    Retorna (path_midi, temp_path_a_borrar).
+    """
+    if path.suffix.lower() == ".rsong":
+        if temp_dir:
+            mid = temp_dir / path.with_suffix(".mid").name
+        else:
+            mid = path.with_suffix(".mid")
+        convert_rsong_file(path, mid)
+        if temp_dir:
+            return mid, mid
+        return mid, None
+    return path, None
+
+
+def collect_default_paths() -> list[Path]:
+    refs = sorted(EXAMPLES_DIR.glob("*.mid"))
+    cadence = sorted(OUTPUT_DIR.glob("*.rsong"))
+    return refs + cadence
+
+
+def print_report(metrics: list[MidiMetrics], *, label_cadence: str = "Cadence (est.)") -> None:
     print("=" * 72)
     print("CADENCE vs REFERENCIAS — benchmark MIDI")
     print("=" * 72)
-    base = cadence_baseline()
 
-    header = f"{'métrica':<28} {'Cadence':>10} {'target':>10}"
-    for m in metrics:
+    refs = [m for m in metrics if m.file.endswith(".mid") and "cadence" not in m.file.lower()]
+    cadence_outputs = [m for m in metrics if m.file.endswith(".mid") and "cadence" in m.file.lower()]
+    cadence_from_rsong = cadence_outputs or [m for m in metrics if m.file.endswith(".rsong")]
+
+    base = cadence_baseline()
+    if cadence_from_rsong:
+        c = cadence_from_rsong[0]
+        base = {
+            "layers_active_mean": c.layers_active_mean,
+            "layers_active_max": c.layers_active_max,
+            "melody_notes_per_bar": c.melody_notes_per_bar,
+            "melody_unique_pitches": c.melody_unique_pitches,
+            "melody_bar_repeat_ratio": c.melody_bar_repeat_ratio,
+            "melody_leap_ratio": c.melody_leap_ratio,
+            "chord_changes_per_bar": c.chord_changes_per_bar,
+            "register_octaves_mean": c.register_octaves_mean,
+            "velocity_stdev": c.velocity_stdev,
+            "notes_per_bar_stdev": c.notes_per_bar_stdev,
+            "echo_layers": c.echo_layers,
+        }
+        label_cadence = cadence_from_rsong[0].file[:20]
+
+    display_metrics = refs if refs else metrics
+    if cadence_from_rsong and cadence_from_rsong[0] not in display_metrics:
+        display_metrics = display_metrics + cadence_from_rsong[:1]
+
+    header = f"{'métrica':<28} {label_cadence:>14} {'target':>10}"
+    for m in display_metrics:
         header += f" {m.file[:14]:>14}"
     print(header)
     print("-" * len(header))
@@ -225,8 +294,9 @@ def print_report(metrics: list[MidiMetrics]) -> None:
 
     for label, key, target_key in rows:
         tk = target_key or key
-        line = f"{label:<28} {base.get(key, 0):>10.1f} {TARGETS.get(tk, 0):>10.1f}"
-        for m in metrics:
+        val_base = base.get(key, 0)
+        line = f"{label:<28} {val_base:>14.1f} {TARGETS.get(tk, 0):>10.1f}"
+        for m in display_metrics:
             val = getattr(m, key, None)
             if val is None:
                 if key == "melody_unique_pitches":
@@ -238,8 +308,8 @@ def print_report(metrics: list[MidiMetrics]) -> None:
             line += f" {val:>14.1f}"
         print(line)
 
-    print("\n── pista melódica principal por referencia ──")
-    for m in metrics:
+    print("\n── pista melódica principal ──")
+    for m in display_metrics:
         print(f"  {m.file}: {m.melody_track or '?'}")
         print(
             f"    leaps={m.melody_leap_ratio:.0%}  "
@@ -249,11 +319,39 @@ def print_report(metrics: list[MidiMetrics]) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    paths = [Path(p) for p in (argv or sys.argv[1:])] if (argv or sys.argv[1:]) else sorted(EXAMPLES_DIR.glob("*.mid"))
+    args = list(argv or sys.argv[1:])
+    compare_mode = "--compare" in args
+    if compare_mode:
+        args = [a for a in args if a != "--compare"]
+
+    if args:
+        paths = [Path(p) for p in args]
+    elif compare_mode or OUTPUT_DIR.exists():
+        paths = collect_default_paths()
+    else:
+        paths = sorted(EXAMPLES_DIR.glob("*.mid"))
+
     if not paths:
-        print(f"No se encontraron .mid en {EXAMPLES_DIR}")
+        print(f"No se encontraron .mid en {EXAMPLES_DIR} ni .rsong en {OUTPUT_DIR}")
         sys.exit(1)
-    metrics = [analyze_midi(p) for p in paths]
+
+    metrics: list[MidiMetrics] = []
+    with tempfile.TemporaryDirectory(prefix="cadence_mid_") as tmp:
+        temp_root = Path(tmp)
+        for path in paths:
+            if not path.exists():
+                print(f"  [skip] no existe: {path}")
+                continue
+            midi_path, _ = resolve_input_path(path, temp_root if path.suffix.lower() == ".rsong" else None)
+            m = analyze_midi(midi_path)
+            if path.suffix.lower() == ".rsong":
+                m.file = path.name
+            metrics.append(m)
+
+    if not metrics:
+        print("No se pudo analizar ningún archivo.")
+        sys.exit(1)
+
     print_report(metrics)
 
 

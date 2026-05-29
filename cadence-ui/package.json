@@ -7,15 +7,18 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "fetch-soundfont": "mkdir -p public/soundfonts && curl -L 'https://cdn.jsdelivr.net/gh/ryohey/signal@6959f35/public/A320U.sf2' -o public/soundfonts/A320U.sf2 && curl -L 'https://cdn.jsdelivr.net/gh/ryohey/signal@6959f35/public/A320U-license.txt' -o public/soundfonts/A320U-license.txt"
   },
   "dependencies": {
     "@react-three/fiber": "^9.6.1",
     "@react-three/postprocessing": "^3.0.4",
+    "@tonejs/midi": "^2.0.28",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "spessasynth_core": "^4.3.6",
+    "spessasynth_lib": "^4.3.5",
     "three": "^0.184.0",
-    "tone": "^15.1.22",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

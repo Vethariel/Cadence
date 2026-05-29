@@ -4,8 +4,10 @@ from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
 
 from cadence.agent.graph import cadence_graph
+from cadence.api.productions import router as productions_router
 
 app = FastAPI(title="Cadence API", version="0.1.0")
+app.include_router(productions_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,6 +52,7 @@ async def generate(request: GenerateRequest):
         "narrative": None,
         "harmony": None,
         "development": None,
+        "strategies": None,
         "arrangement": None,
         "generation_seed": 0,
         "structure": None,

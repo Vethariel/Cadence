@@ -113,4 +113,5 @@ def section_development_map(plan: DevelopmentPlan | None) -> dict[str, SectionDe
 
 
 def compute_generation_seed(raw_prompt: str, total_bars: int) -> int:
-    return abs(hash(f"{raw_prompt}:{total_bars}")) % 100_000
+    from cadence.music.strategy_pools import compute_generation_seed as _seed
+    return _seed(raw_prompt, total_bars)

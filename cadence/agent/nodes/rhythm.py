@@ -13,30 +13,11 @@ from cadence.music.harmony_theory import (
     chord_pitches,
     section_harmony_map,
 )
+from cadence.music.strategy_pools import get_bass_pattern, get_drum_pattern
 
 
 # ── Patrones de batería por estilo ────────────────────────────
-# Cada patrón es una lista de 16 steps (1/16 de compás en 4/4)
-# 1 = golpe, 0 = silencio
-# kick=36, snare=38, hihat=42, clap=39 (números MIDI GM)
-
-DRUM_PATTERNS = {
-    "techno": {
-        "kick":  [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0],
-        "snare": [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
-        "hihat": [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
-    },
-    "dubstep": {
-        "kick":  [1,0,0,0, 0,0,1,0, 1,0,0,0, 0,0,0,0],
-        "snare": [0,0,0,0, 1,0,0,1, 0,0,0,0, 1,0,1,0],
-        "hihat": [1,1,0,1, 1,1,0,1, 1,1,0,1, 1,1,0,1],
-    },
-    "default": {
-        "kick":  [1,0,0,0, 0,0,1,0, 1,0,0,0, 0,0,1,0],
-        "snare": [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
-        "hihat": [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
-    },
-}
+# Patrones definidos en strategy_pools.py — aquí solo MIDI y velocidades.
 
 DRUM_MIDI = {"kick": 36, "snare": 38, "hihat": 42, "clap": 39}
 
@@ -74,13 +55,15 @@ def _ms_per_step(bpm: int, beats_per_bar: int = 4) -> float:
     return ms_per_beat / 4
 
 
-def _select_pattern(genre_tags: list[str]) -> dict:
+def _select_pattern(genre_tags: list[str], drum_pattern_id: str | None = None) -> dict:
+    if drum_pattern_id:
+        return get_drum_pattern(drum_pattern_id)
     for tag in genre_tags:
         tag_lower = tag.lower()
-        for key in DRUM_PATTERNS:
-            if key in tag_lower:
-                return DRUM_PATTERNS[key]
-    return DRUM_PATTERNS["default"]
+        pattern = get_drum_pattern(tag_lower)
+        if tag_lower in ("techno", "dubstep", "house", "breakbeat", "default"):
+            return pattern
+    return get_drum_pattern("default")
 
 
 def _get_root_midi(key: str) -> int:
@@ -96,8 +79,9 @@ def _generate_drum_track(
     bpm: int,
     genre_tags: list[str],
     narrative: SongNarrative | None = None,
+    drum_pattern_id: str | None = None,
 ) -> Track:
-    pattern = _select_pattern(genre_tags)
+    pattern = _select_pattern(genre_tags, drum_pattern_id)
     step_ms = _ms_per_step(bpm)
     steps_per_bar = 16
     events = []
@@ -179,6 +163,7 @@ def _generate_bass_track(
     mode: str,
     narrative: SongNarrative | None = None,
     harmony: HarmonyPlan | None = None,
+    bass_pattern_id: str | None = None,
 ) -> Track:
     step_ms = _ms_per_step(bpm)
     steps_per_bar = 16
@@ -189,6 +174,7 @@ def _generate_bass_track(
     current_t = 0
     intent_map = section_intent_map(narrative)
     harmony_map = section_harmony_map(harmony)
+    bass_steps = get_bass_pattern(bass_pattern_id or "root_fifth")
 
     for section in sections:
         bars = bars_per_section.get(section, 4)
@@ -211,13 +197,9 @@ def _generate_bass_track(
                 tones = chord_pitches(key, mode, chord, octave=2)
                 root_pitch = tones[0]
                 fifth_pitch = tones[2] if len(tones) > 2 else root_pitch + 7
-                bass_pattern = [
-                    (0, root_pitch, base_vel),
-                    (4, root_pitch, max(45, base_vel - 15)),
-                    (8, fifth_pitch, max(45, base_vel - 10)),
-                    (12, root_pitch, max(45, base_vel - 15)),
-                ]
-                for step, pitch, vel in bass_pattern:
+                for step, role in bass_steps:
+                    pitch = root_pitch if role == "root" else fifth_pitch
+                    vel = base_vel if step % 4 == 0 else max(45, base_vel - 15)
                     events.append(RhythmEvent(
                         t=int(current_t + step * step_ms),
                         type="note",
@@ -279,6 +261,7 @@ def rhythm_engine_node(state: SongState) -> dict:
 
     narrative = state.get("narrative")
     harmony = state.get("harmony")
+    strategies = state.get("strategies")
 
     drums = _generate_drum_track(
         sections=structure.sections,
@@ -286,6 +269,7 @@ def rhythm_engine_node(state: SongState) -> dict:
         bpm=bpm,
         genre_tags=genre_tags,
         narrative=narrative,
+        drum_pattern_id=strategies.drum_pattern if strategies else None,
     )
 
     bass = _generate_bass_track(
@@ -296,6 +280,7 @@ def rhythm_engine_node(state: SongState) -> dict:
         mode=mode,
         narrative=narrative,
         harmony=harmony,
+        bass_pattern_id=strategies.bass_pattern if strategies else None,
     )
 
     existing = [t for t in state.get("tracks", []) if t.id not in ("drums", "bass")]

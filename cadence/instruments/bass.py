@@ -6,6 +6,7 @@ from cadence.schemas.song_state import Track
 
 def _compose_bass(ctx: ComposeContext) -> Track:
     structure = ctx.state["structure"]
+    strategies = ctx.state.get("strategies")
     track = _generate_bass_track(
         sections=structure.sections,
         bars_per_section=structure.bars_per_section,
@@ -14,6 +15,7 @@ def _compose_bass(ctx: ComposeContext) -> Track:
         mode=ctx.mode,
         narrative=ctx.state.get("narrative"),
         harmony=ctx.state.get("harmony"),
+        bass_pattern_id=strategies.bass_pattern if strategies else None,
     )
     return track.model_copy(update={"instrument_id": "bass"})
 

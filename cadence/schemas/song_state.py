@@ -146,6 +146,16 @@ class DevelopmentPlan(BaseModel):
     sections: list[SectionDevelopment]
     generation_seed: int = 0
 
+
+class GenerationStrategies(BaseModel):
+    """Estrategias compositivas elegidas por generation_seed."""
+    generation_seed: int = 0
+    drum_pattern: str = "default"
+    bass_pattern: str = "root_fifth"
+    harmony_pool: str = "classic"
+    arp_pattern: str = "up"
+
+
 class HarmonyPlan(BaseModel):
     """Plan armónico compartido por bajo, melodía y pad."""
     key: str
@@ -194,6 +204,7 @@ class SongState(MessagesState):
     structure: Optional[SongStructure] = None
     harmony: Optional[HarmonyPlan] = None
     development: Optional[DevelopmentPlan] = None
+    strategies: Optional[GenerationStrategies] = None
     arrangement: Optional[ArrangementPlan] = None
     generation_seed: int = 0
 

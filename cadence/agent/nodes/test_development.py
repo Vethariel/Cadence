@@ -12,6 +12,7 @@ from cadence.schemas.song_state import (
     RhythmEvent,
 )
 from cadence.agent.nodes.development import development_planner_node
+from cadence.agent.nodes.strategy import strategy_planner_node
 from cadence.agent.nodes.arrangement import arrangement_planner_node
 from cadence.agent.nodes.harmony import harmony_planner_node
 from cadence.agent.nodes.orchestra import compose_orchestra_node
@@ -70,9 +71,10 @@ def _boss_state():
 
 def test_development_planner_varies_by_role():
     state = _boss_state()
+    state.update(strategy_planner_node(state))
     result = development_planner_node(state)
     dev = result["development"]
-    assert dev.generation_seed > 0
+    assert dev.generation_seed == state["generation_seed"] > 0
     by_id = {s.section_id: s for s in dev.sections}
     assert by_id["intro"].transform == "introduce"
     assert by_id["drop"].transform == "climax"

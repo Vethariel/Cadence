@@ -1,142 +1,200 @@
-import * as Tone from 'tone'
 import { useCadenceStore } from '../store'
+import { resolveGmProgram, resolveInstrumentId } from './gm-programs'
+import {
+  buildMasterBus,
+  createSpessaSynth,
+  destroySpessaSynth,
+  getAudioContext,
+  scheduleNote,
+  setupChannel,
+} from './spessa-engine'
 
-// ── Síntesis por rol de track ─────────────────────────────────
+const DEFAULT_VOL = { lead: -4, bass: -2, rhythm: -6, pad: -10, fx: -8 }
+const PLAYBACK_LOOKAHEAD = 0.08
 
-function makeSynth(role) {
-  switch (role) {
-    case 'lead':
-      return new Tone.Synth({
-        oscillator: { type: 'sawtooth' },
-        envelope: { attack: 0.01, decay: 0.1, sustain: 0.6, release: 0.3 },
-      }).toDestination()
+const PAN = {
+  melody: 0,
+  countermelody: 0.35,
+  echo_synth: -0.3,
+  arp_synth: 0.45,
+  bass: -0.05,
+  pad: 0,
+  drums: 0,
+  perc_aux: 0.25,
+  fx_riser: 0,
+}
 
-    case 'bass':
-      return new Tone.Synth({
-        oscillator: { type: 'square' },
-        envelope: { attack: 0.01, decay: 0.2, sustain: 0.8, release: 0.1 },
-      }).toDestination()
+let timerId = null
+let masterBus = null
+let synth = null
+let playbackStartTime = 0
+let loadingPromise = null
 
-    case 'pad':
-      return new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: 'sine' },
-        envelope: { attack: 0.8, decay: 0.3, sustain: 0.7, release: 1.2 },
-      }).toDestination()
+function trackVolumeDb(track, rsong) {
+  const layers = rsong?.game_meta?.arrangement?.layers
+  const layer = layers?.find(l => l.instrument_id === (track.instrument_id || track.id))
+  return layer?.mix_level ?? DEFAULT_VOL[track.role] ?? -8
+}
 
-    case 'fx':
-      return new Tone.Synth({
-        oscillator: { type: 'sine' },
-        envelope: { attack: 0.05, decay: 0.2, sustain: 0.3, release: 0.4 },
-      }).toDestination()
+function trackPan(track) {
+  return PAN[track.instrument_id || track.id] ?? 0
+}
 
-    case 'rhythm':
-      return new Tone.MembraneSynth({
-        pitchDecay: 0.05,
-        octaves: 4,
-        envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 },
-      }).toDestination()
+function isDrumTrack(track) {
+  return track.role === 'rhythm'
+    || track.instrument_id === 'drums'
+    || track.instrument_id === 'perc_aux'
+}
 
-    default:
-      return new Tone.Synth().toDestination()
+function resolveChannel(track) {
+  if (isDrumTrack(track)) return 9
+  const ch = track.midi_channel ?? 0
+  return Math.min(15, Math.max(0, ch))
+}
+
+function findRsongTrack(rsong, instrumentId) {
+  return rsong?.tracks?.find(t => (t.instrument_id || t.id) === instrumentId)
+}
+
+function scheduleRsongTrack(synthInstance, track, rsong, startTime) {
+  const channel = resolveChannel(track)
+  const instrumentId = track.instrument_id || track.id
+
+  setupChannel(synthInstance, channel, {
+    program: isDrumTrack(track) ? null : resolveGmProgram(instrumentId, track.role),
+    isDrum: isDrumTrack(track),
+    volumeDb: trackVolumeDb(track, rsong),
+    pan: trackPan(track),
+  })
+
+  for (const event of track.events) {
+    if (event.type === 'rest') continue
+    const t = startTime + event.t / 1000
+    const dur = Math.max(0.04, event.duration_ms / 1000)
+    const vel = Math.max(1, Math.min(127, event.velocity))
+    scheduleNote(synthInstance, channel, event.pitch, vel, t, dur)
   }
 }
 
-function midiToFreq(midi) {
-  return 440 * Math.pow(2, (midi - 69) / 12)
+function scheduleMidiTrack(synthInstance, track, rsong, startTime) {
+  if (!track.notes.length) return
+
+  const instrumentId = resolveInstrumentId(track.name)
+  const isDrum = track.channel === 9
+    || instrumentId === 'drums'
+    || instrumentId === 'perc_aux'
+    || (track.name || '').toLowerCase().includes('drum')
+    || (track.name || '').toLowerCase().includes('perc')
+
+  const channel = isDrum ? 9 : (track.channel ?? 0)
+  const rsongTrack = findRsongTrack(rsong, instrumentId)
+  const role = rsongTrack?.role ?? (isDrum ? 'rhythm' : 'lead')
+
+  setupChannel(synthInstance, channel, {
+    program: isDrum ? null : resolveGmProgram(instrumentId, role),
+    isDrum,
+    volumeDb: rsongTrack
+      ? trackVolumeDb(rsongTrack, rsong)
+      : (isDrum ? DEFAULT_VOL.rhythm : DEFAULT_VOL.lead),
+    pan: trackPan({ instrument_id: instrumentId }),
+  })
+
+  for (const note of track.notes) {
+    scheduleNote(
+      synthInstance,
+      channel,
+      note.midi,
+      Math.max(1, Math.round(note.velocity * 127)),
+      startTime + note.time,
+      Math.max(0.04, note.duration),
+    )
+  }
 }
-
-function midiToDrumNote(pitch) {
-  // Mapeo básico GM → nota perceptible
-  if (pitch === 36) return 'C1'  // kick
-  if (pitch === 38) return 'G1'  // snare
-  if (pitch === 42) return 'C3'  // hihat
-  return 'C2'
-}
-
-
-// ── Estado interno del player ─────────────────────────────────
-
-let parts  = []
-let timerId = null
-let analyser = null
 
 export function getAnalyser() {
-  return analyser
+  return masterBus ?? null
 }
 
-
-// ── API pública ───────────────────────────────────────────────
-
 export async function startPlayback(rsong) {
-  await stopPlayback()
-  await Tone.start()
-
-  Tone.getTransport().bpm.value = rsong.header.bpm
-  Tone.getTransport().cancel()
-
-  // Analyser para FFT
-  analyser = new Tone.Analyser('fft', 256)
-  const masterGain = new Tone.Gain(0.7).connect(analyser).toDestination()
-
-  for (const track of rsong.tracks) {
-    const synth = makeSynth(track.role === 'fx' ? 'fx' : track.role)
-    synth.disconnect()
-    synth.connect(masterGain)
-
-    // Volumen por rol
-    const vol = { lead: -8, bass: -6, rhythm: -10, pad: -14, fx: -12 }
-    synth.volume.value = vol[track.role] ?? -8
-
-    const events = track.events.map(e => {
-      const timeSeconds = e.t / 1000
-      return [timeSeconds, e]
-    })
-
-    const part = new Tone.Part((time, event) => {
-      const durationSec = Math.max(0.05, event.duration_ms / 1000)
-
-      if (track.role === 'rhythm' || (track.instrument_id === 'perc_aux')) {
-        synth.triggerAttackRelease(
-          midiToDrumNote(event.pitch),
-          durationSec,
-          time,
-          event.velocity / 127,
-        )
-      } else if (track.role === 'pad' && event.type === 'chord') {
-        synth.triggerAttackRelease(
-          midiToFreq(event.pitch),
-          durationSec,
-          time,
-          event.velocity / 127,
-        )
-      } else {
-        synth.triggerAttackRelease(
-          midiToFreq(event.pitch),
-          durationSec,
-          time,
-          event.velocity / 127,
-        )
-      }
-    }, events)
-
-    part.start(0)
-    parts.push({ part, synth })
+  if (loadingPromise) return loadingPromise
+  loadingPromise = _startRsong(rsong)
+  try {
+    await loadingPromise
+  } finally {
+    loadingPromise = null
   }
+}
 
-  // Ticker para actualizar el store cada 50ms
+export async function startMidiPlayback(midiUrl, { durationMs, rsong }) {
+  if (loadingPromise) return loadingPromise
+  loadingPromise = _startMidi(midiUrl, { durationMs, rsong })
+  try {
+    await loadingPromise
+  } finally {
+    loadingPromise = null
+  }
+}
+
+function _beginTransport(durationMs) {
+  const ctx = getAudioContext()
   timerId = setInterval(() => {
-    const ms = Tone.getTransport().seconds * 1000
+    const ms = Math.max(0, (ctx.currentTime - playbackStartTime) * 1000)
     useCadenceStore.getState().setCurrentTime(ms)
-
-    // Detener al llegar al final
-    if (ms >= rsong.header.duration_ms) {
+    if (ms >= durationMs) {
       stopPlayback()
       useCadenceStore.getState().setPlaying(false)
     }
   }, 50)
-
-  Tone.getTransport().start()
   useCadenceStore.getState().setPlaying(true)
+}
+
+async function _startSession({ durationMs, schedule }) {
+  await stopPlayback()
+  useCadenceStore.getState().setAudioLoading(true)
+  try {
+    const ctx = getAudioContext()
+    if (ctx.state !== 'running') await ctx.resume()
+
+    masterBus = buildMasterBus(ctx)
+    synth = await createSpessaSynth(masterBus.comp)
+
+    playbackStartTime = ctx.currentTime + PLAYBACK_LOOKAHEAD
+    schedule(synth, playbackStartTime)
+    _beginTransport(durationMs)
+  } finally {
+    useCadenceStore.getState().setAudioLoading(false)
+  }
+}
+
+async function _startMidi(midiUrl, { durationMs, rsong }) {
+  const { Midi } = await import('@tonejs/midi')
+  const res = await fetch(midiUrl)
+  const midi = new Midi(await res.arrayBuffer())
+
+  await _startSession({
+    durationMs,
+    schedule: (synthInstance, startTime) => {
+      for (const track of midi.tracks) {
+        scheduleMidiTrack(synthInstance, track, rsong, startTime)
+      }
+    },
+  })
+}
+
+async function _startRsong(rsong) {
+  const sorted = [...rsong.tracks].sort((a, b) => {
+    const ord = { rhythm: 0, bass: 1, pad: 2, lead: 3, fx: 4 }
+    return (ord[a.role] ?? 2) - (ord[b.role] ?? 2)
+  })
+
+  await _startSession({
+    durationMs: rsong.header.duration_ms,
+    schedule: (synthInstance, startTime) => {
+      for (const track of sorted) {
+        scheduleRsongTrack(synthInstance, track, rsong, startTime)
+      }
+    },
+  })
 }
 
 export async function stopPlayback() {
@@ -145,19 +203,17 @@ export async function stopPlayback() {
     timerId = null
   }
 
-  Tone.getTransport().stop()
-  Tone.getTransport().cancel()
+  destroySpessaSynth(synth)
+  synth = null
+  playbackStartTime = 0
 
-  for (const { part, synth } of parts) {
-    part.stop()
-    part.dispose()
-    synth.dispose()
-  }
-  parts = []
-
-  if (analyser) {
-    analyser.dispose()
-    analyser = null
+  if (masterBus) {
+    try {
+      masterBus.comp.disconnect()
+      masterBus.gain.disconnect()
+      masterBus.analyser.disconnect()
+    } catch { /* noop */ }
+    masterBus = null
   }
 
   useCadenceStore.getState().reset()
