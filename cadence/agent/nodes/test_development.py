@@ -164,7 +164,7 @@ def test_countermelody_in_arrangement_and_compose():
     assert "countermelody" in ids
     cm = next(t for t in result["tracks"] if t.id == "countermelody")
     assert len(cm.events) > 0
-    assert all(e.pitch < 72 for e in cm.events[:5])
+    assert all(e.pitch >= 72 for e in cm.events[:5])
     print("✓ test_countermelody_in_arrangement_and_compose OK")
 
 

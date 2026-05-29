@@ -67,8 +67,8 @@ def _compose_countermelody(ctx: ComposeContext) -> Track | None:
                 degree = chord_degrees[step_i % len(chord_degrees)] % 7
                 if dev.transform == "invert":
                     degree = (6 - degree) % 7
-                pitch = scale_pitches[degree] - 12
-                pitch = max(21, min(108, pitch))
+                pitch = scale_pitches[degree] + 12
+                pitch = max(72, min(96, pitch))
                 events.append(RhythmEvent(
                     t=int(current_t + step * step_ms),
                     type="note",

@@ -58,7 +58,7 @@ def _compose_arp_synth(ctx: ComposeContext) -> Track | None:
 
         for bar_idx in range(bars):
             chord = chord_at_bar(section_h, bar_idx)
-            pitches = chord_pitches(ctx.key, ctx.mode, chord, octave=4)
+            pitches = chord_pitches(ctx.key, ctx.mode, chord, octave=5)
             events.extend(generate_bar_arp(
                 pitches=pitches,
                 pattern=pattern,

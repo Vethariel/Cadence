@@ -6,6 +6,7 @@ from cadence.config import settings
 from cadence.schemas.song_state import SongNarrative, SongState, Track, RhythmEvent
 from cadence.agent.nodes.repair import failed_check_names
 from cadence.agent.nodes.narrative_apply import (
+    melody_rest_ratio,
     melody_should_play,
     narrative_melody_hint,
     section_intent_map,
@@ -151,8 +152,11 @@ def compose_melody_track(state: SongState) -> Track:
         "\n- OBLIGATORIO: cada frase debe sumar exactamente bars*16 steps.\n"
         "- OBLIGATORIO: frase 2 (respuesta) debe diferir de frase 1 en "
         "al menos 3 notas o contorno inverso.\n"
-        "- Usa saltos de 3-5 semitonos (scale_degree ±2) para contorno activo.\n"
-        "- Incluye silencios estratégicos (is_rest) al final de frases."
+        "- Prefiere movimiento conjunto (±1 grado); saltos máx 2 grados "
+        "(≤4 semitonos) salvo en climax.\n"
+        "- En drop/climax/build-up: máximo 10% silencios (is_rest).\n"
+        "- En secciones density>=0.7: frases de 2 compases, notas de 1-2 steps.\n"
+        "- Registro objetivo C4–C6 (octave_offset 0 o +1 en climax)."
     )
 
     if validation and not validation.passed and state.get("retry_count", 0) > 0:
@@ -212,8 +216,15 @@ def compose_melody_track(state: SongState) -> Track:
     phrase_hints = []
     for section_id in structure.sections:
         dev = dev_map.get(section_id)
+        section_intent = intent_map.get(section_id)
         if dev:
-            phrase_hints.append(f"  - {section_id}: frases de {dev.phrase_length_bars} compases")
+            bars = dev.phrase_length_bars
+            if section_intent and section_intent.density >= 0.7:
+                bars = min(bars, 2)
+            rest_pct = int(melody_rest_ratio(section_intent) * 100)
+            phrase_hints.append(
+                f"  - {section_id}: frases de {bars} compases, rests ≤{rest_pct}%"
+            )
 
     system = SystemMessage(content=(
         "Eres un compositor experto en música electrónica para videojuegos.\n"
@@ -223,8 +234,8 @@ def compose_melody_track(state: SongState) -> Track:
         "Estilo de fraseo:\n"
         "- Pregunta: ascendente o arco, termina en silencio o nota tensa\n"
         "- Respuesta: desciende o resuelve a tónica/grado 0\n"
-        "- Drop/climax: notas cortas (1-2 steps), denso\n"
-        "- Breakdown: mayoría silencios\n"
+        "- Drop/climax: notas cortas (1-2 steps), denso, pocos silencios\n"
+        "- Breakdown: silencios permitidos pero no más del 30%\n"
         f"{harmony_block}{dev_block}{narrative_block}"
         f"Longitud sugerida:\n" + "\n".join(phrase_hints) + "\n"
         f"{variety_hint}\n"

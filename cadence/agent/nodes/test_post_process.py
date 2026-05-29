@@ -158,10 +158,32 @@ def test_post_process_node_pipeline():
     print("✓ test_post_process_node_pipeline OK")
 
 
+def test_post_process_densifies_sparse_melody():
+    """PR B: post_process añade notas en secciones densas."""
+    bar_ms = (60000 / 120) * 4
+    tracks = [
+        Track(
+            id="melody", instrument="Lead", role="lead",
+            events=[
+                _note(0, "drop", pitch=65),
+                _note(int(bar_ms), "drop", pitch=67),
+            ],
+        ),
+    ]
+    state = _mock_state(tracks)
+    result = post_process_node(state)
+    melody = next(t for t in result["tracks"] if t.id == "melody")
+    drop_notes = [e for e in melody.events if e.section == "drop"]
+    assert len(drop_notes) >= 6, f"expected densified drop, got {len(drop_notes)}"
+    print(f"  drop melody notes after post: {len(drop_notes)}")
+    print("✓ test_post_process_densifies_sparse_melody OK")
+
+
 if __name__ == "__main__":
     test_crescendo_boosts_climax_section()
     test_section_multipliers_follow_density()
     test_humanize_adds_timing_jitter()
     test_humanize_deterministic()
     test_post_process_node_pipeline()
+    test_post_process_densifies_sparse_melody()
     print("\n✓ All phase 7 tests passed")

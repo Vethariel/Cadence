@@ -48,11 +48,13 @@ def _transform_motif(
 
 
 def _phrase_length(density: float, seed: int) -> int:
+    if density >= 0.7:
+        return 2
     if density < 0.35:
         return 2
     if density < 0.65:
         return 2 + (seed % 2)
-    return 2 + (seed % 3)  # 2, 3, or 4
+    return 2 + (seed % 2)  # 2–3 compases en build-up medio
 
 
 def _contour_for_role(role: str, seed: int) -> str:

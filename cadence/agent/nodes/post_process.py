@@ -3,12 +3,13 @@
 from cadence.agent.nodes.narrative_apply import section_intent_map
 from cadence.music.crescendo import apply_crescendo
 from cadence.music.humanize import humanize_tracks
+from cadence.music.melody_post import apply_melody_post
 from cadence.schemas.song_state import SongState
 
 
 def post_process_node(state: SongState) -> dict:
     """
-    Aplica crescendo narrativo y humanización determinista a todos los tracks.
+    Aplica post-proceso melódico, crescendo narrativo y humanización.
     Se ejecuta tras compose_orchestra y antes del validator.
     """
     tracks = state.get("tracks", [])
@@ -26,6 +27,7 @@ def post_process_node(state: SongState) -> dict:
         else state.get("generation_seed", 0)
     )
 
+    tracks = apply_melody_post(tracks, state)
     tracks = apply_crescendo(
         tracks,
         structure,
