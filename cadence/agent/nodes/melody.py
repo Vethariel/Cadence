@@ -5,6 +5,7 @@ import math
 
 from cadence.config import settings
 from cadence.schemas.song_state import SongState, Track, RhythmEvent
+from cadence.agent.nodes.repair import failed_check_names
 
 
 # ── Escalas ───────────────────────────────────────────────────
@@ -152,17 +153,37 @@ def melody_composer_node(state: SongState) -> dict:
     scale_pitches = _get_scale_pitches(key, mode)
 
     repair_context = ""
+    temperature = 0.7
+    variety_hint = ""
+
     if validation and not validation.passed and state.get("retry_count", 0) > 0:
+        failed = failed_check_names(validation.errors)
         errors_str = "\n".join(f"  - {e}" for e in validation.errors)
         repair_context = (
             f"\n\nATENCIÓN — intento de reparación #{state['retry_count']}. "
             f"Errores anteriores:\n{errors_str}\nCorrige estos problemas."
         )
+        if "melody_variety" in failed:
+            temperature = min(1.0, 0.7 + state.get("retry_count", 0) * 0.12)
+            variety_hint = (
+                "\n- OBLIGATORIO: usa al menos 4 scale_degree distintos y "
+                "varía octave_offset (-1, 0, 1) para crear contorno melódico."
+            )
+        if "melody_coverage" in failed:
+            variety_hint += (
+                "\n- OBLIGATORIO: cada patrón debe sumar exactamente 16 steps; "
+                "el sistema lo repetirá en todos los compases de la sección."
+            )
+        if "pitch_range" in failed:
+            variety_hint += (
+                "\n- OBLIGATORIO: usa solo scale_degree 0-6 con octave_offset "
+                "en rango -1 a 1; no generes notas fuera de la escala."
+            )
 
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
         google_api_key=settings.google_api_key,
-        temperature=0.7,
+        temperature=temperature,
     ).with_structured_output(MelodyComposerOutput)
 
     system = SystemMessage(content=(
@@ -175,7 +196,8 @@ def melody_composer_node(state: SongState) -> dict:
         "- intro/outro: notas largas (duration_steps 4), pocas notas, melodía simple\n"
         "- build-up/verse: notas medias (duration_steps 2), patrón repetitivo\n"
         "- drop/climax: notas cortas (duration_steps 1-2), denso y agresivo\n"
-        "- breakdown: mayoría silencios (is_rest=True), muy esparso\n\n"
+        "- breakdown: mayoría silencios (is_rest=True), muy esparso\n"
+        f"{variety_hint}\n"
         "Responde SOLO con el objeto estructurado, sin texto adicional."
     ))
 

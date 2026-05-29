@@ -75,6 +75,7 @@ class SongState(MessagesState):
     # — Validación
     validation_result: Optional[ValidationResult] = None
     retry_count: int = 0
+    repair_target: Optional[str] = None
 
     # — Exportación
     export_path: Optional[str] = None

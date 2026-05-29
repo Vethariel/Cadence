@@ -3,17 +3,19 @@ from langgraph.graph import StateGraph, END
 from cadence.schemas.song_state import SongState
 from cadence.agent.nodes.router import music_knowledge_router
 from cadence.agent.nodes.proposal import technical_proposal_node
+from cadence.agent.nodes.technical_parser import technical_parser_node
 from cadence.agent.nodes.planner import structure_planner_node
 from cadence.agent.nodes.rhythm import rhythm_engine_node
 from cadence.agent.nodes.melody import melody_composer_node
 from cadence.agent.nodes.validator import validator_node
+from cadence.agent.nodes.repair import repair_node, route_after_repair
 from cadence.agent.nodes.exporter import export_node
 
 
 # ── Edges condicionales ───────────────────────────────────────
 
 def route_after_router(state: SongState) -> str:
-    """Después del router: técnico va directo al planner, no técnico pasa por proposal."""
+    """Después del router: técnico pasa por parser, no técnico pasa por proposal."""
     if state["intent"].knowledge_level == "technical":
         return "technical"
     return "technical_proposal"
@@ -31,11 +33,7 @@ def route_after_validator(state: SongState) -> str:
 
 
 # ── Nodo de reparación ────────────────────────────────────────
-
-def repair_node(state: SongState) -> dict:
-    """Incrementa el contador de reintentos. El melody_composer leerá
-    el validation_result y ajustará la composición."""
-    return {"retry_count": state.get("retry_count", 0) + 1}
+# Ver cadence/agent/nodes/repair.py
 
 
 # ── Construcción del grafo ────────────────────────────────────
@@ -46,6 +44,7 @@ def build_graph():
     # Registrar nodos
     graph.add_node("router",             music_knowledge_router)
     graph.add_node("technical_proposal", technical_proposal_node)
+    graph.add_node("technical_parser",   technical_parser_node)
     graph.add_node("structure_planner",  structure_planner_node)
     graph.add_node("rhythm_engine",      rhythm_engine_node)
     graph.add_node("melody_composer",    melody_composer_node)
@@ -58,18 +57,28 @@ def build_graph():
 
     # Edges fijos
     graph.add_edge("technical_proposal", "structure_planner")
+    graph.add_edge("technical_parser",   "structure_planner")
     graph.add_edge("structure_planner",  "rhythm_engine")
     graph.add_edge("rhythm_engine",      "melody_composer")
     graph.add_edge("melody_composer",    "validator")
-    graph.add_edge("repair",             "melody_composer")
     graph.add_edge("export",             END)
+
+    # Repair loop: destino según tipo de error
+    graph.add_conditional_edges(
+        "repair",
+        route_after_repair,
+        {
+            "melody_composer": "melody_composer",
+            "rhythm_engine":   "rhythm_engine",
+        },
+    )
 
     # Edges condicionales
     graph.add_conditional_edges(
         "router",
         route_after_router,
         {
-            "technical":        "structure_planner",
+            "technical":          "technical_parser",
             "technical_proposal": "technical_proposal",
         }
     )

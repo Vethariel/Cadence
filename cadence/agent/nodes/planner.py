@@ -32,6 +32,19 @@ def _build_context(state: SongState) -> str:
     intent = state["intent"]
     proposal = state.get("technical_proposal")
 
+    if proposal and intent.knowledge_level == "technical":
+        return (
+            f"Ruta: technical — parámetros extraídos del prompt\n"
+            f"BPM: {proposal.bpm}\n"
+            f"Tonalidad: {proposal.key} {proposal.mode}\n"
+            f"Compás: {proposal.time_signature[0]}/{proposal.time_signature[1]}\n"
+            f"Géneros: {', '.join(proposal.genre_tags)}\n"
+            f"Nivel de energía: {proposal.energy_level}/5\n"
+            f"Estructura sugerida: {', '.join(proposal.structure)}\n"
+            f"Mood: {intent.mood}\n"
+            f"Uso: {intent.use_case}\n"
+            f"Prompt original: {intent.raw_prompt}"
+        )
     if proposal:
         return (
             f"Ruta: non_technical — parámetros propuestos por el sistema\n"
@@ -45,14 +58,13 @@ def _build_context(state: SongState) -> str:
             f"Uso: {intent.use_case}\n"
             f"Descripción original: {intent.raw_prompt}"
         )
-    else:
-        return (
-            f"Ruta: technical — parámetros del usuario\n"
-            f"Prompt original: {intent.raw_prompt}\n"
-            f"Mood: {intent.mood}\n"
-            f"Estilos: {', '.join(intent.style_tags)}\n"
-            f"Uso: {intent.use_case}"
-        )
+    return (
+        f"Ruta: technical — parámetros del usuario\n"
+        f"Prompt original: {intent.raw_prompt}\n"
+        f"Mood: {intent.mood}\n"
+        f"Estilos: {', '.join(intent.style_tags)}\n"
+        f"Uso: {intent.use_case}"
+    )
 
 
 # ── Nodo ─────────────────────────────────────────────────────

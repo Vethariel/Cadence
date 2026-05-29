@@ -185,8 +185,6 @@ def rhythm_engine_node(state: SongState) -> dict:
         mode = proposal.mode
         genre_tags = proposal.genre_tags
     else:
-        # Ruta técnica: valores por defecto razonables
-        # (en paso posterior el intent parser los extraerá del prompt)
         bpm = 120
         key = "C"
         mode = "minor"

@@ -56,6 +56,8 @@ def test_graph_technical():
     final_state = cadence_graph.invoke(initial_state)
 
     print(f"knowledge_level  : {final_state['intent'].knowledge_level}")
+    print(f"bpm              : {final_state['technical_proposal'].bpm}")
+    print(f"key              : {final_state['technical_proposal'].key} {final_state['technical_proposal'].mode}")
     print(f"sections         : {final_state['structure'].sections}")
     print(f"tracks           : {[t.id for t in final_state['tracks']]}")
     print(f"validation score : {final_state['validation_result'].score}")
@@ -63,7 +65,10 @@ def test_graph_technical():
     print(f"retry_count      : {final_state['retry_count']}")
 
     assert final_state["intent"].knowledge_level == "technical"
-    assert final_state["technical_proposal"] is None
+    assert final_state["technical_proposal"] is not None
+    assert final_state["technical_proposal"].bpm == 140
+    assert final_state["technical_proposal"].key.upper().startswith("D")
+    assert final_state["technical_proposal"].mode == "minor"
     assert final_state["structure"] is not None
     assert len(final_state["tracks"]) == 3
     print("✓ test_graph_technical OK")
