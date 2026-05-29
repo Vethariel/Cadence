@@ -5,3 +5,4 @@ __pycache__/
 .ruff_cache/
 cadence-ui/node_modules/
 cadence-ui/dist/
+output/*
