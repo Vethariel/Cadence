@@ -40,13 +40,23 @@ def compose_orchestra_node(state: SongState) -> dict:
 
     ordered = sorted(layers, key=_sort_key)
 
-    for layer in ordered:
+    def _compose_one(layer) -> None:
         ctx = build_compose_context(compose_state, layer)
         if not ctx.active_sections() and layer.min_density > 0:
-            continue
+            return
         track = compose_layer(ctx)
         if track and track.events:
             tracks.append(track)
             compose_state["tracks"] = tracks
+
+    for layer in ordered:
+        _compose_one(layer)
+
+    present = {t.id for t in tracks}
+    for layer in layers:
+        iid = layer.instrument_id
+        if iid in present:
+            continue
+        _compose_one(layer)
 
     return {"tracks": tracks, "repair_layers": None}

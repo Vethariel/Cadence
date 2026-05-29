@@ -17,7 +17,7 @@ def test_fix_phrase_steps_pads():
 
 
 def test_invert_transform():
-    notes = [MelodyNote(scale_degree=0, duration_steps=8, velocity=80)]
+    notes = [MelodyNote(scale_degree=0, duration_steps=4, velocity=80)]
     dev = build_development_plan(
         sections=["s"],
         global_motif=[0, 2, 4],

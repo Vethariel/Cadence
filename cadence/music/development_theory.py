@@ -12,7 +12,9 @@ ROLE_TO_TRANSFORM: dict[str, str] = {
     "silence": "sparse",
 }
 
-CONTOUR_OPTIONS = ["ascending", "descending", "arch", "zigzag", "wave"]
+CONTOUR_OPTIONS = [
+    "ascending", "descending", "arch", "zigzag", "wave", "saw", "static",
+]
 
 DEFAULT_MOTIF = [0, 2, 4, 2]
 
@@ -44,24 +46,37 @@ def _transform_motif(
         return [0 if i >= len(motif) - 1 else d for i, d in enumerate(motif)]
     if transform == "sparse":
         return [motif[0]] if motif else [0]
+    if transform == "ostinato":
+        return list(motif)
+    if transform == "augment":
+        return [(d * 2) % 7 for d in motif]
+    if transform == "call_response":
+        return [(d + (seed % 3)) % 7 for d in motif]
+    if transform == "pedal":
+        return [0] + [(d + 1) % 7 for d in motif[1:]]
     return list(motif)
 
 
 def _phrase_length(density: float, seed: int) -> int:
-    if density >= 0.7:
-        return 2
+    if density >= 0.85:
+        return 2 + (seed % 2)
     if density < 0.35:
         return 2
-    if density < 0.65:
-        return 2 + (seed % 2)
-    return 2 + (seed % 2)  # 2–3 compases en build-up medio
+    return 2 + (seed % 3)
 
 
-def _contour_for_role(role: str, seed: int) -> str:
+def _contour_for_role(role: str, seed: int, genre_tags: list[str] | None = None) -> str:
+    tags = {t.lower() for t in (genre_tags or [])}
     if role in ("climax", "tension"):
-        return CONTOUR_OPTIONS[seed % 3]  # ascending, descending, arch
+        if tags & {"dubstep", "techno", "boss fight", "aggressive"}:
+            return "saw" if seed % 2 else "zigzag"
+        if tags & {"cinematic", "orchestral", "epic"}:
+            return "arch" if seed % 2 else "wave"
+        return CONTOUR_OPTIONS[seed % 4]
     if role in ("reflection", "silence"):
-        return "wave"
+        return "wave" if seed % 2 else "static"
+    if role == "transition":
+        return CONTOUR_OPTIONS[(seed + 3) % len(CONTOUR_OPTIONS)]
     return CONTOUR_OPTIONS[(seed + 2) % len(CONTOUR_OPTIONS)]
 
 
@@ -70,6 +85,7 @@ def build_section_development(
     intent: SectionIntent | None,
     global_motif: list[int],
     seed: int,
+    genre_tags: list[str] | None = None,
 ) -> SectionDevelopment:
     role = intent.narrative_role if intent else "establish"
     density = intent.density if intent else 0.5
@@ -80,7 +96,7 @@ def build_section_development(
         section_id=section_id,
         transform=transform,
         phrase_length_bars=_phrase_length(density, section_seed),
-        contour=_contour_for_role(role, section_seed),
+        contour=_contour_for_role(role, section_seed, genre_tags),
         motif_variant=_transform_motif(motif, transform, section_seed),
     )
 
@@ -90,6 +106,7 @@ def build_development_plan(
     global_motif: list[int],
     narrative_sections: dict[str, SectionIntent] | None = None,
     generation_seed: int = 0,
+    genre_tags: list[str] | None = None,
 ) -> DevelopmentPlan:
     motif = global_motif or DEFAULT_MOTIF
     section_devs = [
@@ -98,6 +115,7 @@ def build_development_plan(
             intent=narrative_sections.get(s) if narrative_sections else None,
             global_motif=motif,
             seed=generation_seed,
+            genre_tags=genre_tags,
         )
         for s in sections
     ]

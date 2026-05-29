@@ -1,4 +1,10 @@
 from cadence.schemas.song_state import SongState, ValidationResult, Track, ArrangementPlan
+from cadence.music.track_metrics import (
+    layers_active_stats,
+    melody_leap_ratio,
+    notes_per_bar_stdev,
+    optional_layer_coverage,
+)
 
 
 # ── Checks individuales ───────────────────────────────────────
@@ -208,18 +214,98 @@ def _check_intensity_arc(
     return True, ""
 
 
+def _is_high_energy_game(
+    energy_level: int,
+    use_case: str,
+) -> bool:
+    return energy_level >= 4 and (use_case or "game").lower() in ("game", "animation")
+
+
+def _check_instrumental_richness(
+    tracks: list[Track],
+    bpm: int,
+    energy_level: int,
+    use_case: str,
+) -> tuple[bool, str]:
+    """Capas simultáneas y variación de densidad — relevante en game/energy alta."""
+    if not _is_high_energy_game(energy_level, use_case):
+        return True, ""
+
+    layers_mean, layers_max = layers_active_stats(tracks, bpm)
+    density_stdev = notes_per_bar_stdev(tracks, bpm)
+    min_mean = 3.0 if energy_level == 4 else 3.5
+    min_stdev = 8.0 if energy_level == 4 else 10.0
+
+    issues = []
+    if layers_mean < min_mean:
+        issues.append(f"capas activas μ={layers_mean:.1f} (mín {min_mean})")
+    if layers_max < 5 and energy_level >= 5:
+        issues.append(f"capas activas máx={layers_max} (mín 5)")
+    if density_stdev < min_stdev:
+        issues.append(f"variación densidad σ={density_stdev:.1f} (mín {min_stdev})")
+
+    if issues:
+        return False, "Riqueza instrumental baja: " + "; ".join(issues)
+    return True, ""
+
+
+def _check_melody_leaps(
+    tracks: list[Track],
+    energy_level: int,
+    use_case: str,
+) -> tuple[bool, str]:
+    """Melodías de alta energía necesitan saltos amplios (estilo dance/arcade)."""
+    if energy_level < 5 or (use_case or "game").lower() not in ("game", "animation"):
+        return True, ""
+
+    ratio = melody_leap_ratio(tracks)
+    if ratio < 0.30:
+        return False, (
+            f"Melodía demasiado conjunta: solo {ratio:.0%} de intervalos >4 semitonos "
+            "(se espera ≥30% en energy 5)."
+        )
+    return True, ""
+
+
+def _check_planned_optional_layers(
+    tracks: list[Track],
+    arrangement: ArrangementPlan | None,
+    duration_ms: int,
+) -> tuple[bool, str]:
+    """Capas opcionales en el plan deben tener presencia audible."""
+    if not arrangement or duration_ms <= 0:
+        return True, ""
+
+    core = {"drums", "bass", "melody"}
+    thin = []
+    for layer in arrangement.layers:
+        iid = layer.instrument_id
+        if iid in core:
+            continue
+        cov = optional_layer_coverage(tracks, iid, duration_ms)
+        if cov < 0.15:
+            thin.append(f"{iid} ({cov:.0%})")
+
+    if len(thin) >= 2:
+        return False, f"Capas planificadas casi inaudibles: {', '.join(thin)}"
+    return True, ""
+
+
 # Checks con su peso en el score final
 CHECKS = [
-    (_check_all_tracks_present,  0.22, "tracks_present"),
-    (_check_melody_coverage,     0.22, "melody_coverage"),
-    (_check_pitch_range,         0.13, "pitch_range"),
-    (_check_velocity_range,      0.10, "velocity_range"),
-    (_check_timing_order,        0.10, "timing_order"),
-    (_check_drums_present,       0.10, "drums_present"),
+    (_check_all_tracks_present,  0.20, "tracks_present"),
+    (_check_melody_coverage,     0.20, "melody_coverage"),
+    (_check_pitch_range,         0.10, "pitch_range"),
+    (_check_velocity_range,      0.08, "velocity_range"),
+    (_check_timing_order,        0.08, "timing_order"),
+    (_check_drums_present,       0.08, "drums_present"),
     (_check_melody_variety,      0.05, "melody_variety"),
-    (_check_melody_loop,         0.08, "melody_loop"),
-    (_check_dynamic_range,       0.05, "dynamic_range"),
-    (_check_intensity_arc,       0.05, "intensity_arc"),
+    (_check_melody_loop,         0.06, "melody_loop"),
+    (_check_dynamic_range,       0.04, "dynamic_range"),
+    (_check_intensity_arc,       0.04, "intensity_arc"),
+    (_check_instrumental_richness, 0.04, "instrumental_richness"),
+    (_check_melody_leaps,        0.03, "melody_leaps"),
+    (_check_planned_optional_layers, 0.03, "planned_layers"),
 ]
 
 def validator_node(state: SongState) -> dict:
@@ -233,6 +319,8 @@ def validator_node(state: SongState) -> dict:
     narrative = state.get("narrative")
     proposal = state.get("technical_proposal")
     bpm = proposal.bpm if proposal else 120
+    energy = proposal.energy_level if proposal else 3
+    use_case = state["intent"].use_case
 
     from cadence.agent.nodes.narrative_apply import section_intent_map
     intent_map = section_intent_map(narrative)
@@ -258,6 +346,14 @@ def validator_node(state: SongState) -> dict:
             passed, msg = check_fn(tracks, structure.sections)
         elif check_fn == _check_intensity_arc:
             passed, msg = check_fn(tracks, structure.sections, intent_map)
+        elif check_fn == _check_instrumental_richness:
+            passed, msg = check_fn(tracks, bpm, energy, use_case)
+        elif check_fn == _check_melody_leaps:
+            passed, msg = check_fn(tracks, energy, use_case)
+        elif check_fn == _check_planned_optional_layers:
+            passed, msg = check_fn(
+                tracks, arrangement, structure.estimated_duration_ms,
+            )
         else:
             passed, msg = check_fn(tracks)
 

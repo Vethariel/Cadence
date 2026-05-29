@@ -16,11 +16,15 @@ def development_planner_node(state: SongState) -> dict:
 
     global_motif = list(narrative.global_motif) if narrative else []
 
+    proposal = state.get("technical_proposal")
+    genre_tags = proposal.genre_tags if proposal else None
+
     development = build_development_plan(
         sections=structure.sections,
         global_motif=global_motif,
         narrative_sections=section_intent_map(narrative),
         generation_seed=seed,
+        genre_tags=genre_tags,
     )
 
     return {"development": development}

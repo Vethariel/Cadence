@@ -92,8 +92,11 @@ def test_arrangement_planner_adds_optional_layers():
     assert "pad" in layer_ids
     assert "perc_aux" in layer_ids
     assert "fx_riser" in layer_ids
-    assert "echo_synth" in layer_ids
-    assert "chord_stab" in layer_ids
+    # Presupuesto lead: no todas las capas opcionales a la vez
+    lead_optionals = {"countermelody", "echo_synth", "arp_synth", "chord_stab"}
+    present = lead_optionals & set(layer_ids)
+    assert 1 <= len(present) <= 2, f"expected 1-2 lead optionals, got {present}"
+    assert len(layer_ids) < 10, "demasiadas capas simultáneas en el plan"
     assert arrangement.layer_schedule is not None
     assert len(arrangement.layer_schedule.entries) > 0
     assert arrangement.required_layers == ["drums", "bass", "melody"]

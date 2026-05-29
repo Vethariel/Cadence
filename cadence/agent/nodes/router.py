@@ -23,7 +23,9 @@ class RouterOutput(BaseModel):
         description="Contexto de uso inferido del prompt."
     )
     mood: str = Field(description="Estado emocional o atmósfera detectada, en inglés. Ej: 'energetic', 'melancholic'.")
-    style_tags: list[str] = Field(description="Máximo 4 etiquetas de género o estilo inferidas. Ej: ['techno', 'dubstep'].")
+    style_tags: list[str] = Field(
+        description="Pistas iniciales de estilo (2–6); el tag_enricher las expande después.",
+    )
 
 
 # ── Nodo ─────────────────────────────────────────────────────

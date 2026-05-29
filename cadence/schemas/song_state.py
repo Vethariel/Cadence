@@ -11,7 +11,55 @@ class UserIntent(BaseModel):
     knowledge_level: Literal["technical", "non_technical"]
     use_case: Literal["game", "animation", "loop", "cutscene"] = "game"
     mood: str = ""
-    style_tags: list[str] = Field(default_factory=list)
+    style_tags: list[str] = Field(
+        default_factory=list,
+        description="Pistas iniciales del router; el perfil enriquecido manda en timbres.",
+    )
+
+
+class MusicalStyleProfile(BaseModel):
+    """Perfil de estilo construido por LLM — fuente de verdad para timbres y género."""
+    genres: list[str] = Field(
+        default_factory=list,
+        description=(
+            "3–8 géneros del catálogo cadence.music.genre_catalog "
+            "(techno, dubstep, boss fight, orchestral…)."
+        ),
+    )
+    references: list[str] = Field(
+        default_factory=list,
+        description="Solo nombres propios del prompt; vacío si no hay referentes literales.",
+    )
+    instrumentation: list[str] = Field(
+        default_factory=list,
+        description="Timbres/roles deseados (saw lead, wobble bass, brass stab…).",
+    )
+    avoid: list[str] = Field(
+        default_factory=list,
+        description="Estilos o timbres a evitar (calliope, music box, orchestral strings pad…).",
+    )
+    drum_character: str = Field(
+        default="",
+        description="Carácter rítmico esperado (four-on-floor, dubstep half-time…).",
+    )
+    reasoning: str = Field(
+        default="",
+        description="Por qué se eligieron estos tags y no otros (ej. no chiptune si piden SNES party).",
+    )
+
+
+class TimbreFix(BaseModel):
+    """Corrección de timbre sugerida por el verificador de coherencia."""
+    instrument_id: str
+    gm_program: int = Field(ge=0, le=127)
+    reason: str = ""
+
+
+class StyleCoherenceVerdict(BaseModel):
+    """Resultado del nodo de verificación timbral."""
+    passed: bool = True
+    issues: list[str] = Field(default_factory=list)
+    timbre_fixes: list[TimbreFix] = Field(default_factory=list)
 
 class TechnicalProposal(BaseModel):
     """Propuesta técnica generada cuando el usuario NO es técnico."""
@@ -85,6 +133,61 @@ class SectionHarmony(BaseModel):
     section_id: str
     progression: list[ChordSpec]
 
+class InstrumentAssignment(BaseModel):
+    """Instrumento elegido por el agente con timbre GM y nivel de mezcla."""
+    instrument_id: str
+    gm_program: int = Field(
+        ge=0, le=127,
+        description="gm_program elegido de TIMBRES_BY_INSTRUMENT[instrument_id].",
+    )
+    display_name: str = Field(
+        default="",
+        description="Ignorado en validación; se deriva del gm_program en catálogo.",
+    )
+    mix_level: float = Field(default=-10.0, description="Nivel de mezcla en dB.")
+    active: bool = True
+
+
+class OrchestrationPlan(BaseModel):
+    """Conjunto instrumental y timbres — decisión creativa del agente."""
+    ensemble_concept: str = Field(
+        default="",
+        description="Breve concepto del ensemble (1–2 frases).",
+    )
+    instruments: list[InstrumentAssignment] = Field(default_factory=list)
+    melody_texture: Literal["sparse", "balanced", "dense", "percussive"] = "balanced"
+    drum_pattern: Literal[
+        "techno", "dubstep", "house", "breakbeat",
+        "halftime", "dnb", "industrial", "default",
+    ] = Field(description="Patrón de batería elegido por el agente.")
+    bass_pattern: Literal[
+        "root_fifth", "driving", "syncopated", "pulse",
+        "half_time", "walk", "octave_pulse",
+    ] = Field(description="Patrón de bajo elegido por el agente.")
+    arp_pattern: str = Field(default="", description="Override opcional del patrón de arpeggio.")
+    harmony_pool: str = Field(default="", description="Override opcional del pool armónico.")
+    stab_pattern: str = Field(
+        default="",
+        description="Patrón rítmico de chord_stab si la capa está activa.",
+    )
+    perc_pattern: str = Field(
+        default="",
+        description="Patrón de claps/shaker en perc_aux si la capa está activa.",
+    )
+    pluck_pattern: str = Field(
+        default="",
+        description="Patrón de synth_pluck si la capa está activa.",
+    )
+    counter_pattern: str = Field(
+        default="",
+        description="Patrón rítmico de countermelody si la capa está activa.",
+    )
+    echo_source: str = Field(
+        default="",
+        description="Fuente del eco: auto | melody | arp_synth | chord_stab.",
+    )
+
+
 class LayerSpec(BaseModel):
     """Capa instrumental en el arreglo — qué suena y cuándo."""
     instrument_id: str
@@ -132,9 +235,12 @@ class SectionDevelopment(BaseModel):
     transform: Literal[
         "introduce", "sequence_up", "sequence_down", "invert",
         "fragment", "expand", "climax", "resolve", "sparse",
+        "ostinato", "augment", "call_response", "pedal",
     ]
     phrase_length_bars: int = Field(ge=2, le=4, default=2)
-    contour: Literal["ascending", "descending", "arch", "zigzag", "wave"] = "arch"
+    contour: Literal[
+        "ascending", "descending", "arch", "zigzag", "wave", "saw", "static",
+    ] = "arch"
     motif_variant: list[int] = Field(
         default_factory=list,
         description="Motivo transformado (grados 0-6) para esta sección.",
@@ -154,6 +260,11 @@ class GenerationStrategies(BaseModel):
     bass_pattern: str = "root_fifth"
     harmony_pool: str = "classic"
     arp_pattern: str = "up"
+    stab_pattern: str = "offbeat"
+    perc_pattern: str = "backbeat"
+    pluck_pattern: str = "eighth"
+    counter_pattern: str = "offbeat_sync"
+    echo_source: str = "auto"
 
 
 class HarmonyPlan(BaseModel):
@@ -180,6 +291,7 @@ class Track(BaseModel):
     instrument_id: str = ""
     midi_channel: int = 0
     role: Literal["lead", "rhythm", "bass", "pad", "fx"]
+    gm_program: int | None = None
     events: list[RhythmEvent] = Field(default_factory=list)
 
 class ValidationResult(BaseModel):
@@ -195,7 +307,8 @@ class ValidationResult(BaseModel):
 class SongState(MessagesState):
     # — Router
     intent: Optional[UserIntent] = None
-    
+    style_profile: Optional[MusicalStyleProfile] = None
+
     # — Propuesta técnica (solo ruta non_technical)
     technical_proposal: Optional[TechnicalProposal] = None
 
@@ -205,6 +318,9 @@ class SongState(MessagesState):
     harmony: Optional[HarmonyPlan] = None
     development: Optional[DevelopmentPlan] = None
     strategies: Optional[GenerationStrategies] = None
+    orchestration_plan: Optional[OrchestrationPlan] = None
+    style_coherence: Optional[StyleCoherenceVerdict] = None
+    style_coherence_retries: int = 0
     arrangement: Optional[ArrangementPlan] = None
     generation_seed: int = 0
 

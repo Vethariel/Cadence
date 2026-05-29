@@ -1,16 +1,22 @@
-"""Post-procesado expresivo: crescendo + humanize."""
+"""Post-procesado expresivo: melodía, timbres, crescendo, humanize."""
 
 from cadence.agent.nodes.narrative_apply import section_intent_map
 from cadence.music.crescendo import apply_crescendo
 from cadence.music.humanize import humanize_tracks
+from cadence.music.instrument_catalog import (
+    apply_orchestration_gm,
+    orchestration_for_state,
+)
 from cadence.music.melody_post import apply_melody_post
 from cadence.schemas.song_state import SongState
 
 
 def post_process_node(state: SongState) -> dict:
     """
-    Aplica post-proceso melódico, crescendo narrativo y humanización.
-    Se ejecuta tras compose_orchestra y antes del validator.
+    Pipeline post-orquesta:
+    1. Melodía (silencios/densidad según estilo y energía)
+    2. Timbres GM (orchestration_plan del agente o fallback)
+    3. Crescendo + humanize
     """
     tracks = state.get("tracks", [])
     if not tracks:
@@ -18,9 +24,9 @@ def post_process_node(state: SongState) -> dict:
 
     structure = state["structure"]
     proposal = state.get("technical_proposal")
-    bpm = proposal.bpm if proposal else 120
     narrative = state.get("narrative")
     development = state.get("development")
+    bpm = proposal.bpm if proposal else 120
     seed = (
         development.generation_seed
         if development
@@ -28,6 +34,8 @@ def post_process_node(state: SongState) -> dict:
     )
 
     tracks = apply_melody_post(tracks, state)
+    plan = orchestration_for_state(state, tracks)
+    tracks = apply_orchestration_gm(tracks, plan)
     tracks = apply_crescendo(
         tracks,
         structure,

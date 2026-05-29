@@ -60,6 +60,8 @@ def ms_to_quarters(ms: float, bpm: float) -> float:
 
 
 def _track_program(track: dict) -> int | None:
+    if track.get("gm_program") is not None:
+        return int(track["gm_program"])
     iid = track.get("instrument_id") or track.get("id")
     if iid and iid in INSTRUMENT_PROGRAM:
         return INSTRUMENT_PROGRAM[iid]

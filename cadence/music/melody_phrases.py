@@ -65,6 +65,14 @@ def apply_development_to_notes(
             d = max(0, d - cycle_idx % 2)
         elif dev.transform == "sparse":
             return d if phrase_idx == 0 else d
+        elif dev.transform == "ostinato":
+            d = degree
+        elif dev.transform == "augment":
+            d = (d * 2) % 7
+        elif dev.transform == "call_response":
+            d = (d + phrase_idx + cycle_idx) % 7
+        elif dev.transform == "pedal":
+            d = 0 if phrase_idx == 0 else d
         else:
             d = (d + cycle_idx + phrase_idx) % 7
 
@@ -74,6 +82,10 @@ def apply_development_to_notes(
             d = (d + phrase_idx) % 7
         elif dev.contour == "descending":
             d = (d - phrase_idx) % 7
+        elif dev.contour == "saw":
+            d = (d + phrase_idx - cycle_idx) % 7
+        elif dev.contour == "static":
+            pass
 
         return d % 7
 

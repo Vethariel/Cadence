@@ -2,6 +2,7 @@ from langgraph.graph import StateGraph, END
 
 from cadence.schemas.song_state import SongState
 from cadence.agent.nodes.router import music_knowledge_router
+from cadence.agent.nodes.tag_enricher import tag_enricher_node
 from cadence.agent.nodes.proposal import technical_proposal_node
 from cadence.agent.nodes.technical_parser import technical_parser_node
 from cadence.agent.nodes.narrative import narrative_planner_node
@@ -9,6 +10,11 @@ from cadence.agent.nodes.planner import structure_planner_node
 from cadence.agent.nodes.harmony import harmony_planner_node
 from cadence.agent.nodes.development import development_planner_node
 from cadence.agent.nodes.strategy import strategy_planner_node
+from cadence.agent.nodes.instrument_planner import instrument_planner_node
+from cadence.agent.nodes.style_coherence import (
+    style_coherence_node,
+    route_after_style_coherence,
+)
 from cadence.agent.nodes.arrangement import arrangement_planner_node
 from cadence.agent.nodes.orchestra import compose_orchestra_node
 from cadence.agent.nodes.post_process import post_process_node
@@ -19,11 +25,12 @@ from cadence.agent.nodes.exporter import export_node
 
 # ── Edges condicionales ───────────────────────────────────────
 
-def route_after_router(state: SongState) -> str:
-    """Después del router: técnico pasa por parser, no técnico pasa por proposal."""
+def route_after_tag_enricher(state: SongState) -> str:
+    """Tras enriquecer estilo: técnico pasa por parser, no técnico por proposal."""
     if state["intent"].knowledge_level == "technical":
         return "technical"
     return "technical_proposal"
+
 
 def route_after_validator(state: SongState) -> str:
     """Después del validator: si pasa va a export, si no y hay reintentos va a repair."""
@@ -43,6 +50,7 @@ def build_graph():
     graph = StateGraph(SongState)
 
     graph.add_node("router",               music_knowledge_router)
+    graph.add_node("tag_enricher",         tag_enricher_node)
     graph.add_node("technical_proposal",   technical_proposal_node)
     graph.add_node("technical_parser",     technical_parser_node)
     graph.add_node("narrative_planner",    narrative_planner_node)
@@ -50,6 +58,8 @@ def build_graph():
     graph.add_node("strategy_planner",    strategy_planner_node)
     graph.add_node("harmony_planner",      harmony_planner_node)
     graph.add_node("development_planner", development_planner_node)
+    graph.add_node("instrument_planner",   instrument_planner_node)
+    graph.add_node("style_coherence",      style_coherence_node)
     graph.add_node("arrangement_planner",  arrangement_planner_node)
     graph.add_node("compose_orchestra",    compose_orchestra_node)
     graph.add_node("post_process",         post_process_node)
@@ -59,13 +69,15 @@ def build_graph():
 
     graph.set_entry_point("router")
 
+    graph.add_edge("router",                 "tag_enricher")
     graph.add_edge("technical_proposal",   "narrative_planner")
     graph.add_edge("technical_parser",     "narrative_planner")
     graph.add_edge("narrative_planner",    "structure_planner")
     graph.add_edge("structure_planner",    "strategy_planner")
     graph.add_edge("strategy_planner",     "harmony_planner")
     graph.add_edge("harmony_planner",      "development_planner")
-    graph.add_edge("development_planner",  "arrangement_planner")
+    graph.add_edge("development_planner",  "instrument_planner")
+    graph.add_edge("instrument_planner",   "style_coherence")
     graph.add_edge("arrangement_planner",  "compose_orchestra")
     graph.add_edge("compose_orchestra",    "post_process")
     graph.add_edge("post_process",         "validator")
@@ -78,11 +90,19 @@ def build_graph():
     )
 
     graph.add_conditional_edges(
-        "router",
-        route_after_router,
+        "tag_enricher",
+        route_after_tag_enricher,
         {
             "technical":          "technical_parser",
             "technical_proposal": "technical_proposal",
+        },
+    )
+    graph.add_conditional_edges(
+        "style_coherence",
+        route_after_style_coherence,
+        {
+            "instrument_planner": "instrument_planner",
+            "arrangement_planner": "arrangement_planner",
         },
     )
     graph.add_conditional_edges(

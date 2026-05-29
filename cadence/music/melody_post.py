@@ -11,6 +11,7 @@ from cadence.schemas.song_state import RhythmEvent, SongState, Track
 MELODY_PITCH_MIN = 60   # C4
 MELODY_PITCH_MAX = 84   # C6
 MAX_LEAP_DEFAULT = 4
+MAX_LEAP_HIGH_ENERGY = 7
 MAX_LEAP_CLIMAX = 7
 MIN_NOTES_PER_BAR_DENSE = 6
 DENSE_SECTION_IDS = frozenset({"drop", "climax", "build-up", "chorus"})
@@ -49,10 +50,21 @@ def clamp_melody_register(events: list[RhythmEvent]) -> list[RhythmEvent]:
     ]
 
 
+def _max_leap_semitones(section: str, climax_sections: set[str], energy_level: int) -> int:
+    if section in climax_sections:
+        return MAX_LEAP_CLIMAX
+    if energy_level >= 5:
+        return MAX_LEAP_HIGH_ENERGY
+    if energy_level >= 4:
+        return 6
+    return MAX_LEAP_DEFAULT
+
+
 def limit_melody_leaps(
     events: list[RhythmEvent],
     scale_pitches: list[int],
     climax_sections: set[str],
+    energy_level: int = 3,
 ) -> list[RhythmEvent]:
     if len(events) < 2:
         return events
@@ -62,7 +74,7 @@ def limit_melody_leaps(
 
     for event in sorted_events[1:]:
         prev = result[-1]
-        max_leap = MAX_LEAP_CLIMAX if event.section in climax_sections else MAX_LEAP_DEFAULT
+        max_leap = _max_leap_semitones(event.section, climax_sections, energy_level)
         delta = event.pitch - prev.pitch
         if abs(delta) <= max_leap:
             result.append(event)
@@ -191,6 +203,36 @@ def densify_melody(
     return sorted(events + extra, key=lambda e: e.t)
 
 
+def _should_densify(intent_map: dict, use_case: str, melody_texture: str = "balanced") -> bool:
+    if melody_texture == "sparse":
+        return False
+    if use_case in ("loop", "cutscene") and melody_texture != "dense":
+        return False
+    return True
+
+
+def _should_fill_gaps(intent_map: dict, use_case: str, melody_texture: str = "balanced") -> bool:
+    if melody_texture == "sparse":
+        return False
+    if use_case == "loop":
+        return False
+    if use_case == "cutscene" and melody_texture != "percussive":
+        return False
+    return True
+
+
+def _min_notes_per_bar(use_case: str, energy: int, melody_texture: str = "balanced") -> int:
+    if melody_texture == "sparse":
+        return 2
+    if melody_texture == "dense" or melody_texture == "percussive":
+        return 6 if energy >= 4 else 5
+    if use_case == "cutscene":
+        return 3
+    if energy >= 5:
+        return 5
+    return 4
+
+
 def process_melody_events(
     events: list[RhythmEvent],
     *,
@@ -198,8 +240,11 @@ def process_melody_events(
     key: str,
     mode: str,
     intent_map: dict,
+    use_case: str = "game",
+    energy_level: int = 3,
+    melody_texture: str = "balanced",
 ) -> list[RhythmEvent]:
-    """Pipeline completo de post-proceso melódico."""
+    """Pipeline de post-proceso melódico — respeta silencios según estilo."""
     if not events:
         return events
 
@@ -209,19 +254,29 @@ def process_melody_events(
         if intent.narrative_role in ("climax", "tension") or intent.density >= DENSE_DENSITY
     }
 
-    events = densify_melody(events, bpm, scale_pitches, intent_map)
-    events = fill_melody_gaps(events, bpm, scale_pitches, intent_map)
-    events = limit_melody_leaps(events, scale_pitches, climax_sections)
+    if _should_densify(intent_map, use_case, melody_texture):
+        events = densify_melody(
+            events, bpm, scale_pitches, intent_map,
+            min_notes_per_bar=_min_notes_per_bar(use_case, energy_level, melody_texture),
+        )
+    if _should_fill_gaps(intent_map, use_case, melody_texture):
+        events = fill_melody_gaps(events, bpm, scale_pitches, intent_map)
+
+    events = limit_melody_leaps(events, scale_pitches, climax_sections, energy_level)
     events = clamp_melody_register(events)
     return sorted(events, key=lambda e: e.t)
 
 
 def process_melody_track(track: Track, state: SongState) -> Track:
     proposal = state.get("technical_proposal")
+    intent = state["intent"]
     bpm = proposal.bpm if proposal else 120
     key = proposal.key if proposal else "C"
     mode = proposal.mode if proposal else "minor"
+    energy = proposal.energy_level if proposal else 3
     intent_map = section_intent_map(state.get("narrative"))
+    orch = state.get("orchestration_plan")
+    melody_texture = orch.melody_texture if orch else "balanced"
 
     events = process_melody_events(
         track.events,
@@ -229,6 +284,9 @@ def process_melody_track(track: Track, state: SongState) -> Track:
         key=key,
         mode=mode,
         intent_map=intent_map,
+        use_case=intent.use_case,
+        energy_level=energy,
+        melody_texture=melody_texture,
     )
     return track.model_copy(update={"events": events})
 

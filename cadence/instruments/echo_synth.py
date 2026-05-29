@@ -1,26 +1,60 @@
-"""Eco determinista de la melodía — capa Spider Dance / Bad Apple."""
+"""Eco determinista — melodía, arp o stabs según estrategia."""
 
 from cadence.instruments.context import ComposeContext
 from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.music.layer_schedule import filter_events_by_schedule, ms_per_bar
 from cadence.schemas.song_state import RhythmEvent, Track
 
+ECHO_SOURCES = ("auto", "melody", "arp_synth", "chord_stab")
+_SOURCE_PRIORITY = ("melody", "arp_synth", "chord_stab")
+
+
+def _resolve_echo_source_id(ctx: ComposeContext) -> str | None:
+    strategies = ctx.state.get("strategies")
+    preference = strategies.echo_source if strategies else "auto"
+    if preference not in ECHO_SOURCES:
+        preference = "auto"
+
+    tracks = ctx.state.get("tracks", [])
+    by_id = {t.id: t for t in tracks}
+
+    if preference != "auto":
+        src = by_id.get(preference)
+        return preference if src and src.events else None
+
+    for iid in _SOURCE_PRIORITY:
+        src = by_id.get(iid)
+        if src and src.events:
+            return iid
+    return None
+
 
 def _compose_echo_synth(ctx: ComposeContext) -> Track | None:
-    melody = next(
-        (t for t in ctx.state.get("tracks", []) if t.id == "melody"),
-        None,
-    )
-    if not melody or not melody.events:
+    source_id = _resolve_echo_source_id(ctx)
+    if not source_id:
+        return None
+
+    source = next(t for t in ctx.state.get("tracks", []) if t.id == source_id)
+    if not source.events:
         return None
 
     bar_ms = ms_per_bar(ctx.bpm)
     delay_ms = int(bar_ms * 0.5)
-    available = {l.instrument_id for l in ctx.state.get("arrangement").layers} if ctx.state.get("arrangement") else set()
-    schedule = ctx.state.get("arrangement").layer_schedule if ctx.state.get("arrangement") else None
+    available = (
+        {l.instrument_id for l in ctx.state.get("arrangement").layers}
+        if ctx.state.get("arrangement")
+        else set()
+    )
+    schedule = (
+        ctx.state.get("arrangement").layer_schedule
+        if ctx.state.get("arrangement")
+        else None
+    )
+
+    vel_scale = 0.55 if source_id == "chord_stab" else 0.6
 
     events: list[RhythmEvent] = []
-    for e in melody.events:
+    for e in source.events:
         if e.type != "note":
             continue
         events.append(RhythmEvent(
@@ -28,7 +62,7 @@ def _compose_echo_synth(ctx: ComposeContext) -> Track | None:
             type="note",
             pitch=e.pitch,
             duration_ms=int(e.duration_ms * 0.85),
-            velocity=max(28, int(e.velocity * 0.6)),
+            velocity=max(28, int(e.velocity * vel_scale)),
             beat_index=e.beat_index,
             section=e.section,
         ))

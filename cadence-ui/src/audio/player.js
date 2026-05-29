@@ -75,7 +75,7 @@ function scheduleRsongTrack(synthInstance, track, rsong, startTime) {
 
     if (section !== lastSection) {
       setupChannel(synthInstance, channel, {
-        program: isDrumTrack(track) ? null : resolveGmProgram(instrumentId, track.role),
+        program: isDrumTrack(track) ? null : (track.gm_program ?? resolveGmProgram(instrumentId, track.role)),
         isDrum: isDrumTrack(track),
         volumeDb: effectiveTrackVolumeDb(
           track, rsong, section, trackVolumeDb(track, rsong),

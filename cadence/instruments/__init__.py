@@ -10,6 +10,7 @@ import cadence.instruments.countermelody  # noqa: F401
 import cadence.instruments.echo_synth  # noqa: F401
 import cadence.instruments.arp_synth  # noqa: F401
 import cadence.instruments.chord_stab  # noqa: F401
+import cadence.instruments.synth_pluck  # noqa: F401
 
 from cadence.instruments.registry import (
     compose_layer,

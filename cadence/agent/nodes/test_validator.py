@@ -138,6 +138,25 @@ def test_flat_dynamics_fails():
     assert any("dynamic_range" in e for e in v.errors)
     print("✓ test_flat_dynamics_fails OK")
 
+
+def test_low_richness_fails_high_energy():
+    """Energy 5 con pocas capas activas debe fallar instrumental_richness."""
+    state = _make_base_state([
+        Track(id="melody", instrument="Lead", midi_channel=0, role="lead",
+              events=[_make_note(i * 200, pitch=60 + (i % 5), section="drop") for i in range(80)]),
+        Track(id="drums", instrument="Drums", midi_channel=9, role="rhythm",
+              events=[_make_drum(i * 100, section="drop") for i in range(80)]),
+        Track(id="bass", instrument="Bass", midi_channel=1, role="bass",
+              events=[_make_note(i * 400, pitch=41, section="drop") for i in range(20)]),
+    ])
+    state["technical_proposal"] = TechnicalProposal(
+        bpm=120, key="C", mode="minor", genre_tags=["techno"],
+        energy_level=5, structure=["intro", "drop", "outro"],
+    )
+    v = validator_node(state)["validation_result"]
+    assert any("instrumental_richness" in e for e in v.errors)
+    print("✓ test_low_richness_fails_high_energy OK")
+
 if __name__ == "__main__":
     test_passes()
     print("---")
@@ -148,4 +167,6 @@ if __name__ == "__main__":
     test_monotone_melody()
     print("---")
     test_flat_dynamics_fails()
+    print("---")
+    test_low_richness_fails_high_energy()
     print("\n✓ todos los tests del validator OK")

@@ -1,11 +1,15 @@
 """
 Benchmark: compara MIDIs de referencia y salidas Cadence (.rsong → .mid).
 
+Evalúa cada pieza contra rangos del arquetipo de estilo (no un promedio global).
+Incluye índice de riqueza instrumental.
+
 Uso:
     uv run python -m cadence.analysis.midi_benchmark
     uv run python -m cadence.analysis.midi_benchmark examples/ASGORE.mid
     uv run python -m cadence.analysis.midi_benchmark output/*.rsong
     uv run python -m cadence.analysis.midi_benchmark --compare
+    uv run python -m cadence.analysis.midi_benchmark output/foo.rsong --style dense_dance
 """
 
 from __future__ import annotations
@@ -13,35 +17,35 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
+import json
 import statistics
 import sys
 import tempfile
 
 from music21 import chord, converter, note
 
+from cadence.analysis.benchmark_profiles import (
+    ARCHETYPE_DEFS,
+    METRIC_LABELS,
+    RICHNESS_COMPONENT_LABELS,
+    StyleEvaluation,
+    build_style_profiles,
+    evaluate_against_style,
+    format_meta_summary,
+    infer_archetype,
+    infer_archetype_from_path,
+    load_rsong_meta,
+)
 from cadence.analysis.rsong_to_midi import convert_rsong_file
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples"
 OUTPUT_DIR = Path(__file__).resolve().parents[2] / "output"
 
-# Objetivos derivados del análisis de referencias (promedio ASGORE + Spider Dance)
-TARGETS = {
-    "layers_active_mean": 7.0,
-    "layers_active_max": 11.0,
-    "unique_pitches": 20.0,
-    "melody_notes_per_bar": 8.0,
-    "melody_bar_repeat_ratio": 0.15,
-    "melody_leap_ratio": 0.25,
-    "chord_changes_per_bar": 0.7,
-    "register_octaves_mean": 4.5,
-    "velocity_stdev": 20.0,
-    "notes_per_bar_stdev": 25.0,
-}
-
 
 @dataclass
 class MidiMetrics:
     file: str
+    source_path: str = ""
     parts: int = 0
     echo_layers: int = 0
     duration_bars: float = 0.0
@@ -61,7 +65,8 @@ class MidiMetrics:
     melody_bar_repeat_ratio: float = 0.0
     melody_leap_ratio: float = 0.0
     melody_rest_ratio: float = 0.0
-    gaps: dict[str, float] = field(default_factory=dict)
+    archetype: str = ""
+    evaluation: StyleEvaluation | None = None
 
 
 def _find_lead_part(parts: list) -> tuple[str, list] | None:
@@ -81,7 +86,7 @@ def _find_lead_part(parts: list) -> tuple[str, list] | None:
     best_score = 0
     for p in parts:
         name = str(p.partName or p.id or "").lower()
-        if any(x in name for x in ("arp", "drum", "bass", "pad", "perc", "fx")):
+        if any(x in name for x in ("arp", "drum", "bass", "pad", "perc", "fx", "stab")):
             continue
         notes = [el for el in p.flatten().notes if isinstance(el, note.Note)]
         if len(notes) < 20:
@@ -98,7 +103,8 @@ def analyze_midi(path: Path) -> MidiMetrics:
     score = converter.parse(str(path))
     flat = score.flatten()
     parts = list(score.parts) if score.parts else [score]
-    m = MidiMetrics(file=path.name, parts=len(parts))
+    m = MidiMetrics(file=path.name, source_path=str(path))
+    m.parts = len(parts)
 
     m.echo_layers = sum(
         1 for p in parts if "echo" in (p.partName or "").lower()
@@ -193,39 +199,10 @@ def analyze_midi(path: Path) -> MidiMetrics:
         m.melody_leap_ratio = sum(1 for i in intervals if i > 4) / max(1, len(intervals))
         m.melody_rest_ratio = sum(1 for g in gaps if g >= 0.5) / max(1, len(gaps))
 
-    # Gaps vs targets (negative = below target)
-    m.gaps = {
-        "layers_active_mean": m.layers_active_mean - TARGETS["layers_active_mean"],
-        "melody_notes_per_bar": m.melody_notes_per_bar - TARGETS["melody_notes_per_bar"],
-        "melody_unique_pitches": m.melody_unique_pitches - TARGETS["unique_pitches"],
-        "chord_changes_per_bar": m.chord_changes_per_bar - TARGETS["chord_changes_per_bar"],
-        "register_octaves_mean": m.register_octaves_mean - TARGETS["register_octaves_mean"],
-    }
     return m
 
 
-def cadence_baseline() -> dict[str, float]:
-    """Estimación histórica — preferir métricas reales de output/*.rsong si existen."""
-    return {
-        "layers_active_mean": 6.0,
-        "layers_active_max": 9,
-        "melody_notes_per_bar": 6.0,
-        "melody_unique_pitches": 12.0,
-        "melody_bar_repeat_ratio": 0.15,
-        "melody_leap_ratio": 0.12,
-        "chord_changes_per_bar": 0.5,
-        "register_octaves_mean": 3.5,
-        "velocity_stdev": 22.0,
-        "notes_per_bar_stdev": 15.0,
-        "echo_layers": 1,
-    }
-
-
 def resolve_input_path(path: Path, temp_dir: Path | None = None) -> tuple[Path, Path | None]:
-    """
-    Resuelve .rsong → .mid temporal o permanente.
-    Retorna (path_midi, temp_path_a_borrar).
-    """
     if path.suffix.lower() == ".rsong":
         if temp_dir:
             mid = temp_dir / path.with_suffix(".mid").name
@@ -244,83 +221,178 @@ def collect_default_paths() -> list[Path]:
     return refs + cadence
 
 
-def print_report(metrics: list[MidiMetrics], *, label_cadence: str = "Cadence (est.)") -> None:
-    print("=" * 72)
-    print("CADENCE vs REFERENCIAS — benchmark MIDI")
-    print("=" * 72)
+def _is_reference(m: MidiMetrics) -> bool:
+    return EXAMPLES_DIR.name in m.source_path or (
+        m.file.endswith(".mid") and "cadence" not in m.file.lower()
+    )
 
-    refs = [m for m in metrics if m.file.endswith(".mid") and "cadence" not in m.file.lower()]
-    cadence_outputs = [m for m in metrics if m.file.endswith(".mid") and "cadence" in m.file.lower()]
-    cadence_from_rsong = cadence_outputs or [m for m in metrics if m.file.endswith(".rsong")]
 
-    base = cadence_baseline()
-    if cadence_from_rsong:
-        c = cadence_from_rsong[0]
-        base = {
-            "layers_active_mean": c.layers_active_mean,
-            "layers_active_max": c.layers_active_max,
-            "melody_notes_per_bar": c.melody_notes_per_bar,
-            "melody_unique_pitches": c.melody_unique_pitches,
-            "melody_bar_repeat_ratio": c.melody_bar_repeat_ratio,
-            "melody_leap_ratio": c.melody_leap_ratio,
-            "chord_changes_per_bar": c.chord_changes_per_bar,
-            "register_octaves_mean": c.register_octaves_mean,
-            "velocity_stdev": c.velocity_stdev,
-            "notes_per_bar_stdev": c.notes_per_bar_stdev,
-            "echo_layers": c.echo_layers,
-        }
-        label_cadence = cadence_from_rsong[0].file[:20]
+def _is_cadence_output(m: MidiMetrics) -> bool:
+    return m.file.endswith(".rsong") or "cadence" in m.file.lower()
 
-    display_metrics = refs if refs else metrics
-    if cadence_from_rsong and cadence_from_rsong[0] not in display_metrics:
-        display_metrics = display_metrics + cadence_from_rsong[:1]
 
-    header = f"{'métrica':<28} {label_cadence:>14} {'target':>10}"
-    for m in display_metrics:
-        header += f" {m.file[:14]:>14}"
+def print_archetype_catalog(
+    profiles: dict,
+    metrics_by_file: dict[str, MidiMetrics],
+) -> None:
+    print("\n── Arquetipos de referencia (rangos, no promedios) ──")
+    for arch_id, profile in profiles.items():
+        refs = ", ".join(profile.references)
+        print(f"\n  [{arch_id}] {profile.label}")
+        print(f"    refs: {refs}")
+        print(f"    {profile.description}")
+        key_metrics = (
+            "layers_active_mean", "melody_notes_per_bar",
+            "melody_leap_ratio", "instrumental_richness",
+        )
+        for key in ("layers_active_mean", "melody_notes_per_bar", "parts", "register_octaves_mean"):
+            if key not in profile.ranges:
+                continue
+            lo, hi = profile.ranges[key]
+            ref_span = " | ".join(
+                f"{name.split('.')[0]}={getattr(metrics_by_file[name], key, 0):.1f}"
+                for name in profile.references
+                if name in metrics_by_file
+            )
+            print(f"    {METRIC_LABELS.get(key, key):<28} rango {lo:.1f}–{hi:.1f}  ({ref_span})")
+
+
+def print_style_evaluation(m: MidiMetrics) -> None:
+    ev = m.evaluation
+    if not ev:
+        return
+
+    status = "✓" if ev.fit_ratio >= 0.6 else "✗"
+    print(f"\n{'─' * 72}")
+    print(f"{status} {m.file}")
+    print(f"  arquetipo: {ev.profile.label} ({ev.profile.id})")
+    if ev.meta_summary:
+        print(f"  meta: {ev.meta_summary}")
+
+    ir = ev.instrumental_richness
+    ir_ok = "✓" if ir.in_style_range else "○"
+    print(
+        f"  {ir_ok} riqueza instrumental: {ir.score:.0f}/100  "
+        f"(banda estilo {ir.reference_lo:.0f}–{ir.reference_hi:.0f})"
+    )
+    comp_parts = [
+        f"{RICHNESS_COMPONENT_LABELS.get(k, k)}={v:.0f}"
+        for k, v in ir.components.items()
+    ]
+    print(f"      componentes: {', '.join(comp_parts)}")
+    print(f"  ajuste al estilo: {ev.fit_ratio:.0%} ({sum(c.in_range for c in ev.checks)}/{len(ev.checks)} métricas en rango)")
+    print(f"  melodía: {m.melody_track or '?'}  leaps={m.melody_leap_ratio:.0%}  rests={m.melody_rest_ratio:.0%}")
+
+    print(f"\n  {'métrica':<28} {'valor':>8} {'rango':>14} {'refs':>12} {'ok':>4}")
+    for check in ev.checks:
+        mark = "✓" if check.in_range else "·"
+        rng = f"{check.lo:.1f}–{check.hi:.1f}"
+        if check.key in ("melody_leap_ratio", "melody_rest_ratio"):
+            val_s = f"{check.value:.0%}"
+            rng = f"{check.lo:.0%}–{check.hi:.0%}"
+            ref_s = check.reference_span.replace(".0", "").replace(".1", "")
+        else:
+            val_s = f"{check.value:.1f}"
+            ref_s = check.reference_span
+        print(f"  {check.label:<28} {val_s:>8} {rng:>14} {ref_s:>12} {mark:>4}")
+
+
+def print_reference_table(metrics: list[MidiMetrics]) -> None:
+    refs = [m for m in metrics if _is_reference(m)]
+    if not refs:
+        return
+
+    print("\n── Corpus de referencia ──")
+    header = f"{'archivo':<22} {'capas':>6} {'mel/bar':>7} {'leaps':>6} {'rests':>6} {'oct':>5} {'pistas':>6}"
     print(header)
     print("-" * len(header))
-
-    rows = [
-        ("capas activas (media)", "layers_active_mean", None),
-        ("capas activas (máx)", "layers_active_max", None),
-        ("notas melódicas / bar", "melody_notes_per_bar", None),
-        ("pitches únicos melodía", "melody_unique_pitches", "unique_pitches"),
-        ("cambios acorde / bar", "chord_changes_per_bar", None),
-        ("octavas activas / bar", "register_octaves_mean", None),
-        ("variación densidad/bar", "notes_per_bar_stdev", None),
-        ("capas echo", "echo_layers", None),
-    ]
-
-    for label, key, target_key in rows:
-        tk = target_key or key
-        val_base = base.get(key, 0)
-        line = f"{label:<28} {val_base:>14.1f} {TARGETS.get(tk, 0):>10.1f}"
-        for m in display_metrics:
-            val = getattr(m, key, None)
-            if val is None:
-                if key == "melody_unique_pitches":
-                    val = m.melody_unique_pitches
-                elif key == "melody_notes_per_bar":
-                    val = m.melody_notes_per_bar
-                elif key == "echo_layers":
-                    val = m.echo_layers
-            line += f" {val:>14.1f}"
-        print(line)
-
-    print("\n── pista melódica principal ──")
-    for m in display_metrics:
-        print(f"  {m.file}: {m.melody_track or '?'}")
+    for m in refs:
+        arch = infer_archetype_from_path(Path(m.file))
         print(
-            f"    leaps={m.melody_leap_ratio:.0%}  "
-            f"bar_repeat={m.melody_bar_repeat_ratio:.0%}  "
-            f"rests={m.melody_rest_ratio:.0%}"
+            f"{m.file[:22]:<22} {m.layers_active_mean:>6.1f} "
+            f"{m.melody_notes_per_bar:>7.1f} {m.melody_leap_ratio:>5.0%} "
+            f"{m.melody_rest_ratio:>5.0%} {m.register_octaves_mean:>5.1f} {m.parts:>6}"
+            f"  → {arch}"
         )
+
+
+def print_report(
+    metrics: list[MidiMetrics],
+    profiles: dict,
+    metrics_by_file: dict[str, MidiMetrics],
+) -> None:
+    print("=" * 72)
+    print("CADENCE — benchmark por estilo (rangos de referencia)")
+    print("=" * 72)
+
+    print_reference_table(metrics)
+    print_archetype_catalog(profiles, metrics_by_file)
+
+    cadence = [m for m in metrics if _is_cadence_output(m)]
+    if cadence:
+        print("\n── Evaluación Cadence ──")
+        for m in cadence:
+            print_style_evaluation(m)
+    else:
+        print("\n  (sin salidas Cadence — solo corpus de referencia)")
+
+
+def attach_evaluations(
+    metrics: list[MidiMetrics],
+    profiles: dict,
+    metrics_by_file: dict[str, MidiMetrics],
+    *,
+    style_override: str | None = None,
+    path_meta: dict[str, dict] | None = None,
+) -> None:
+    path_meta = path_meta or {}
+    for m in metrics:
+        if not _is_cadence_output(m):
+            continue
+
+        if style_override and style_override in profiles:
+            arch_id = style_override
+            meta_summary = f"arquetipo forzado: {style_override}"
+        else:
+            meta = path_meta.get(m.file, {})
+            arch_id = infer_archetype(
+                use_case=meta.get("use_case"),
+                energy_level=meta.get("energy_level"),
+                genre_tags=meta.get("genre_tags"),
+                title=meta.get("title", m.file),
+            )
+            meta_summary = format_meta_summary(meta) if meta else ""
+
+        profile = profiles[arch_id]
+        m.archetype = arch_id
+        m.evaluation = evaluate_against_style(
+            m,
+            profile,
+            meta_summary=meta_summary,
+            metrics_by_file=metrics_by_file,
+        )
+
+
+def load_reference_metrics() -> dict[str, MidiMetrics]:
+    """Métricas del corpus de examples/ — base para rangos por arquetipo."""
+    refs: dict[str, MidiMetrics] = {}
+    for path in sorted(EXAMPLES_DIR.glob("*.mid")):
+        m = analyze_midi(path)
+        refs[m.file] = m
+    return refs
 
 
 def main(argv: list[str] | None = None) -> None:
     args = list(argv or sys.argv[1:])
     compare_mode = "--compare" in args
+    style_override: str | None = None
+
+    if "--style" in args:
+        idx = args.index("--style")
+        if idx + 1 < len(args):
+            style_override = args[idx + 1]
+        args = [a for i, a in enumerate(args) if i not in (idx, idx + 1)]
+
     if compare_mode:
         args = [a for a in args if a != "--compare"]
 
@@ -336,23 +408,49 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     metrics: list[MidiMetrics] = []
+    path_meta: dict[str, dict] = {}
+
     with tempfile.TemporaryDirectory(prefix="cadence_mid_") as tmp:
         temp_root = Path(tmp)
         for path in paths:
             if not path.exists():
                 print(f"  [skip] no existe: {path}")
                 continue
-            midi_path, _ = resolve_input_path(path, temp_root if path.suffix.lower() == ".rsong" else None)
+            midi_path, _ = resolve_input_path(
+                path, temp_root if path.suffix.lower() == ".rsong" else None,
+            )
             m = analyze_midi(midi_path)
             if path.suffix.lower() == ".rsong":
                 m.file = path.name
+                m.source_path = str(path)
+                try:
+                    path_meta[path.name] = load_rsong_meta(path)
+                except (json.JSONDecodeError, OSError):
+                    pass
             metrics.append(m)
 
     if not metrics:
         print("No se pudo analizar ningún archivo.")
         sys.exit(1)
 
-    print_report(metrics)
+    metrics_by_file = load_reference_metrics()
+    for m in metrics:
+        metrics_by_file[m.file] = m
+
+    existing = {m.file for m in metrics}
+    for ref_m in metrics_by_file.values():
+        if ref_m.file.endswith(".mid") and ref_m.file not in existing:
+            metrics.append(ref_m)
+
+    profiles = build_style_profiles(metrics_by_file)
+
+    attach_evaluations(
+        metrics, profiles, metrics_by_file,
+        style_override=style_override,
+        path_meta=path_meta,
+    )
+
+    print_report(metrics, profiles, metrics_by_file)
 
 
 if __name__ == "__main__":

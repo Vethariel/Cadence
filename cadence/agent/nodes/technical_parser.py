@@ -2,6 +2,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from cadence.config import settings
+from cadence.music.style_profile import (
+    format_profile_for_llm,
+    merge_proposal_genre_tags,
+)
 from cadence.schemas.song_state import SongState, TechnicalProposal
 
 
@@ -15,6 +19,7 @@ def technical_parser_node(state: SongState) -> dict:
     """
 
     intent = state["intent"]
+    profile = state.get("style_profile")
 
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
@@ -32,7 +37,7 @@ def technical_parser_node(state: SongState) -> dict:
         "- mode: 'major' o 'minor' según el prompt (ej. 'D minor', 'A major').\n"
         "- time_signature: lista [numerador, denominador] si se menciona compás "
         "(ej. '4/4' → [4,4]). Default [4,4].\n"
-        "- genre_tags: géneros/estilos mencionados explícitamente.\n"
+        "- genre_tags: géneros explícitos en el prompt; si faltan, usa los del perfil de estilo.\n"
         "- structure: secciones mencionadas en orden (ej. 'intro-verse-chorus-outro'). "
         "Si no hay estructura explícita, usa ['intro', 'verse', 'chorus', 'outro'].\n"
         "- energy_level: infiere 1-5 del tono del prompt si no hay valor explícito.\n"
@@ -42,11 +47,14 @@ def technical_parser_node(state: SongState) -> dict:
 
     human = HumanMessage(content=(
         f"Prompt del usuario: {intent.raw_prompt}\n"
-        f"Estilos detectados por el router: {', '.join(intent.style_tags) or 'ninguno'}\n"
+        f"Pistas del router: {', '.join(intent.style_tags) or 'ninguna'}\n"
         f"Mood: {intent.mood}\n"
-        f"Uso: {intent.use_case}"
+        f"Uso: {intent.use_case}\n\n"
+        f"{format_profile_for_llm(profile)}"
     ))
 
     result: TechnicalProposal = llm.invoke([system, human])
+    merged_tags = merge_proposal_genre_tags(result.genre_tags, profile)
+    proposal = result.model_copy(update={"genre_tags": merged_tags})
 
-    return {"technical_proposal": result}
+    return {"technical_proposal": proposal}

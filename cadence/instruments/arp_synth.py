@@ -3,7 +3,7 @@
 from cadence.agent.nodes.narrative_apply import section_intent_map
 from cadence.instruments.context import ComposeContext
 from cadence.instruments.registry import InstrumentDefinition, register
-from cadence.music.arp_patterns import generate_bar_arp, steps_per_note
+from cadence.music.arp_patterns import generate_bar_arp, resolve_arp_pattern, steps_per_note
 from cadence.music.harmony_theory import chord_at_bar, chord_pitches, section_harmony_map
 from cadence.schemas.song_state import Track
 
@@ -24,11 +24,9 @@ def _compose_arp_synth(ctx: ComposeContext) -> Track | None:
     active = set(ctx.active_sections())
 
     strategies = ctx.state.get("strategies")
-    pattern = (
-        strategies.arp_pattern
-        if strategies
-        else "up"
-    )
+    seed = ctx.state.get("generation_seed", 0)
+    raw_pattern = strategies.arp_pattern if strategies else None
+    pattern = resolve_arp_pattern(raw_pattern, seed)
 
     step_ms = _ms_per_step(ctx.bpm)
     steps_per_bar = 16
@@ -53,7 +51,7 @@ def _compose_arp_synth(ctx: ComposeContext) -> Track | None:
             beat_index += bars * steps_per_bar
             continue
 
-        note_stride = steps_per_note(density, rhythmic)
+        note_stride = steps_per_note(density, rhythmic, pattern)
         base_vel = int(38 + density * 28)
 
         for bar_idx in range(bars):

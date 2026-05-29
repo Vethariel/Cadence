@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from cadence.music.style_profile import effective_genre_tags
 from cadence.schemas.song_state import SongState
 from cadence.agent.nodes.narrative_apply import section_intent_map
 from cadence.music.crescendo import narrative_intensity_curve
@@ -97,18 +98,20 @@ def _build_rsong(state: SongState) -> dict:
     strategies = state.get("strategies")
     validation = state["validation_result"]
 
+    profile = state.get("style_profile")
+
     if proposal:
         bpm = proposal.bpm
         key = proposal.key
         mode = proposal.mode
-        genre_tags = proposal.genre_tags
+        genre_tags = effective_genre_tags(state)
         energy_level = proposal.energy_level
         time_signature = proposal.time_signature
     else:
         bpm = 120
         key = "C"
         mode = "minor"
-        genre_tags = intent.style_tags
+        genre_tags = effective_genre_tags(state) or intent.style_tags
         energy_level = 3
         time_signature = [4, 4]
 
@@ -134,6 +137,13 @@ def _build_rsong(state: SongState) -> dict:
             "energy_level": energy_level,
             "hit_objects_hint": intent.use_case in ("game", "loop"),
             "sections": structure.sections,
+            **(
+                {
+                    "style_profile": profile.model_dump(),
+                }
+                if profile
+                else {}
+            ),
             **(
                 {
                     "strategies": strategies.model_dump(),
@@ -216,6 +226,7 @@ def _build_rsong(state: SongState) -> dict:
                 "instrument_id": track.instrument_id or track.id,
                 "midi_channel": track.midi_channel,
                 "role": track.role,
+                **({"gm_program": track.gm_program} if track.gm_program is not None else {}),
                 "event_count": len(track.events),
                 "events": [
                     {

@@ -2,6 +2,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from cadence.config import settings
+from cadence.music.style_profile import format_profile_for_llm, merge_proposal_genre_tags
 from cadence.schemas.song_state import SongState, TechnicalProposal
 
 
@@ -14,6 +15,7 @@ def technical_proposal_node(state: SongState) -> dict:
     """
 
     intent = state["intent"]
+    profile = state.get("style_profile")
 
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
@@ -24,7 +26,8 @@ def technical_proposal_node(state: SongState) -> dict:
     system = SystemMessage(content=(
         "Eres un compositor experto en música para videojuegos y animaciones. "
         "Tu tarea es traducir una descripción creativa en parámetros musicales técnicos precisos. "
-        "Piensa en el contexto de uso, el mood y los estilos detectados para tomar decisiones coherentes. "
+        "Piensa en el contexto de uso, el mood y el perfil de estilo enriquecido para tomar decisiones coherentes. "
+        "Los genre_tags deben alinearse con los géneros del perfil de estilo, no con etiquetas genéricas incorrectas. "
         "Responde SOLO con el objeto estructurado, sin explicaciones adicionales."
     ))
 
@@ -32,11 +35,14 @@ def technical_proposal_node(state: SongState) -> dict:
         f"Descripción del usuario: {intent.raw_prompt}\n"
         f"Contexto de uso: {intent.use_case}\n"
         f"Mood detectado: {intent.mood}\n"
-        f"Estilos detectados: {', '.join(intent.style_tags)}\n\n"
+        f"Pistas del router: {', '.join(intent.style_tags)}\n\n"
+        f"{format_profile_for_llm(profile)}\n\n"
         "Propón los parámetros técnicos más adecuados para esta canción. "
         "El campo reasoning debe explicar brevemente por qué elegiste esos valores."
     ))
 
     result: TechnicalProposal = llm.invoke([system, human])
+    merged_tags = merge_proposal_genre_tags(result.genre_tags, profile)
+    proposal = result.model_copy(update={"genre_tags": merged_tags})
 
-    return {"technical_proposal": result}
+    return {"technical_proposal": proposal}

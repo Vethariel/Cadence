@@ -5,9 +5,8 @@ from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.agent.nodes.narrative_apply import section_intent_map, melody_should_play
 from cadence.music.development_theory import section_development_map
 from cadence.music.harmony_theory import chord_at_bar, chord_tones_as_degrees, section_harmony_map
+from cadence.music.instrument_patterns import counter_steps
 from cadence.schemas.song_state import RhythmEvent, Track
-
-OFFBEAT_STEPS = (4, 6, 12, 14)
 
 
 def _ms_per_step(bpm: int) -> float:
@@ -30,6 +29,11 @@ def _compose_countermelody(ctx: ComposeContext) -> Track | None:
 
     from cadence.agent.nodes.melody import _get_scale_pitches
     scale_pitches = _get_scale_pitches(ctx.key, ctx.mode)
+
+    strategies = ctx.state.get("strategies")
+    seed = ctx.state.get("generation_seed", 0)
+    counter_pattern = strategies.counter_pattern if strategies else None
+    step_pattern = counter_steps(counter_pattern, seed)
 
     step_ms = _ms_per_step(ctx.bpm)
     steps_per_bar = 16
@@ -63,7 +67,7 @@ def _compose_countermelody(ctx: ComposeContext) -> Track | None:
                 chord = chord_at_bar(section_h, bar_idx)
                 chord_degrees = chord_tones_as_degrees(chord)
 
-            for step_i, step in enumerate(OFFBEAT_STEPS):
+            for step_i, step in enumerate(step_pattern):
                 degree = chord_degrees[step_i % len(chord_degrees)] % 7
                 if dev.transform == "invert":
                     degree = (6 - degree) % 7

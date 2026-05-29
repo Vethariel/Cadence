@@ -149,6 +149,11 @@ def test_apply_development_changes_degrees():
 
 def test_countermelody_in_arrangement_and_compose():
     state = _boss_state()
+    from cadence.schemas.song_state import GenerationStrategies
+    state["strategies"] = GenerationStrategies(generation_seed=42)
+    state["technical_proposal"] = state["technical_proposal"].model_copy(
+        update={"genre_tags": ["orchestral", "cinematic"]},
+    )
     state["harmony"] = harmony_planner_node(state)["harmony"]
     state["development"] = development_planner_node(state)["development"]
     arr = arrangement_planner_node(state)["arrangement"]
