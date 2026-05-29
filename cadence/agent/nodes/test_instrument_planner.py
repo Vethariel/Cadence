@@ -136,8 +136,10 @@ def test_agent_layer_patterns_applied_to_strategies():
         harmony_pool="aggressive",
     )
     merged = _apply_plan_to_strategies(
-        GenerationStrategies(generation_seed=7),
+        GenerationStrategies(generation_seed=7, harmony_pool="classic"),
         plan,
+        energy_level=5,
+        use_case="game",
     )
     assert merged.stab_pattern == "dubstep_off"
     assert merged.perc_pattern == "syncopated"
@@ -196,7 +198,8 @@ def test_arrangement_from_orchestration_plan():
     ids = {l.instrument_id for l in arrangement.layers}
     assert "chord_stab" in ids
     assert "arp_synth" in ids
-    assert "countermelody" not in ids
+    assert "echo_synth" in ids
+    assert "countermelody" in ids
     assert state["strategies"].drum_pattern == "techno"
     print("✓ test_arrangement_from_orchestration_plan OK")
 

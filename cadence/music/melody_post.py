@@ -203,12 +203,21 @@ def densify_melody(
     return sorted(events + extra, key=lambda e: e.t)
 
 
-def _should_densify(intent_map: dict, use_case: str, melody_texture: str = "balanced") -> bool:
+def _should_densify(
+    intent_map: dict,
+    use_case: str,
+    melody_texture: str = "balanced",
+    energy_level: int = 3,
+) -> bool:
+    if melody_texture in ("dense", "percussive"):
+        return True
     if melody_texture == "sparse":
         return False
+    if energy_level >= 4 and use_case == "game":
+        return True
     if use_case in ("loop", "cutscene") and melody_texture != "dense":
         return False
-    return True
+    return energy_level >= 3 and use_case == "game"
 
 
 def _should_fill_gaps(intent_map: dict, use_case: str, melody_texture: str = "balanced") -> bool:
@@ -224,11 +233,15 @@ def _should_fill_gaps(intent_map: dict, use_case: str, melody_texture: str = "ba
 def _min_notes_per_bar(use_case: str, energy: int, melody_texture: str = "balanced") -> int:
     if melody_texture == "sparse":
         return 2
-    if melody_texture == "dense" or melody_texture == "percussive":
+    if melody_texture in ("dense", "percussive"):
+        if energy >= 5:
+            return 8
         return 6 if energy >= 4 else 5
     if use_case == "cutscene":
         return 3
     if energy >= 5:
+        return 6
+    if energy >= 4:
         return 5
     return 4
 
@@ -254,7 +267,7 @@ def process_melody_events(
         if intent.narrative_role in ("climax", "tension") or intent.density >= DENSE_DENSITY
     }
 
-    if _should_densify(intent_map, use_case, melody_texture):
+    if _should_densify(intent_map, use_case, melody_texture, energy_level):
         events = densify_melody(
             events, bpm, scale_pitches, intent_map,
             min_notes_per_bar=_min_notes_per_bar(use_case, energy_level, melody_texture),
@@ -275,8 +288,11 @@ def process_melody_track(track: Track, state: SongState) -> Track:
     mode = proposal.mode if proposal else "minor"
     energy = proposal.energy_level if proposal else 3
     intent_map = section_intent_map(state.get("narrative"))
+    from cadence.music.repertoire_signals import default_melody_texture
+
     orch = state.get("orchestration_plan")
-    melody_texture = orch.melody_texture if orch else "balanced"
+    requested = orch.melody_texture if orch else "balanced"
+    melody_texture = default_melody_texture(energy, intent.use_case, requested)
 
     events = process_melody_events(
         track.events,

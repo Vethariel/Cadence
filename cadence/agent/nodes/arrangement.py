@@ -8,6 +8,10 @@ from cadence.schemas.song_state import (
 )
 from cadence.agent.nodes.narrative_apply import section_intent_map
 from cadence.music.instrument_catalog import active_instrument_ids, select_fallback_lead_layers
+from cadence.music.repertoire_signals import (
+    instruments_implied_by_strategies,
+    percussion_suppressed,
+)
 from cadence.music.style_profile import effective_genre_tags
 from cadence.music.layer_schedule import (
     DENSITY_ARP,
@@ -41,7 +45,7 @@ CORE_LAYERS = [
     ),
 ]
 
-HIGH_ENERGY_SECTIONS = {"drop", "climax", "chorus", "build-up", "verse"}
+HIGH_ENERGY_SECTIONS = {"drop", "climax", "chorus", "build-up", "buildup", "verse", "bridge", "main_theme"}
 FX_TRANSITIONS = {"riser", "filter_sweep", "pickup"}
 
 LEAD_OPTIONALS = ("countermelody", "echo_synth", "arp_synth", "chord_stab", "synth_pluck")
@@ -88,6 +92,28 @@ def _layer_spec(
     )
 
 
+def _effective_instruments(state: SongState, plan: OrchestrationPlan) -> set[str]:
+    """Instrumentos activos del plan + capas comprometidas por strategies."""
+    chosen = active_instrument_ids(plan)
+    proposal = state.get("technical_proposal")
+    intent = state["intent"]
+    energy = proposal.energy_level if proposal else 3
+    strategies = state.get("strategies")
+    chosen |= instruments_implied_by_strategies(
+        strategies,
+        energy_level=energy,
+        use_case=intent.use_case,
+    )
+    profile = state.get("style_profile")
+    if percussion_suppressed(
+        use_case=intent.use_case,
+        energy_level=energy,
+        style_profile=profile,
+    ):
+        chosen.discard("drums")
+    return chosen
+
+
 def _build_layers_from_orchestration(
     state: SongState,
     plan: OrchestrationPlan,
@@ -96,7 +122,7 @@ def _build_layers_from_orchestration(
     structure = state["structure"]
     narrative = state.get("narrative")
     intent_map = section_intent_map(narrative)
-    chosen = active_instrument_ids(plan)
+    chosen = _effective_instruments(state, plan)
 
     layers: list[LayerSpec] = []
     for core in ("drums", "bass", "melody"):
@@ -130,6 +156,17 @@ def _build_layers_from_orchestration(
         if density >= DENSITY_ARP and "arp_synth" in chosen:
             arp_sections.append(section_id)
 
+    pluck_sections = []
+    for section_id in structure.sections:
+        sec_intent = intent_map.get(section_id)
+        density = sec_intent.density if sec_intent else 0.5
+        if (
+            density >= DENSITY_PLUCK
+            and section_id in HIGH_ENERGY_SECTIONS
+            and "synth_pluck" in chosen
+        ):
+            pluck_sections.append(section_id)
+
     optional_sections = [
         ("pad", pad_sections),
         ("chord_stab", chord_stab_sections),
@@ -138,6 +175,7 @@ def _build_layers_from_orchestration(
         ("countermelody", counter_sections),
         ("echo_synth", echo_sections),
         ("arp_synth", arp_sections),
+        ("synth_pluck", pluck_sections),
     ]
     for iid, sections in optional_sections:
         if sections:
@@ -166,7 +204,29 @@ def _build_layers_deterministic(state: SongState) -> list[LayerSpec]:
         generation_seed=seed,
     )
 
-    layers = list(CORE_LAYERS)
+    profile = state.get("style_profile")
+    if percussion_suppressed(
+        use_case=use_case,
+        energy_level=energy,
+        style_profile=profile,
+    ):
+        layers = [
+            LayerSpec(
+                instrument_id="bass",
+                active_sections=["*"],
+                pattern_strategy="loop_1bar",
+                mix_level=-6.0,
+            ),
+            LayerSpec(
+                instrument_id="melody",
+                active_sections=["*"],
+                pattern_strategy="phrase_4bar",
+                mix_level=-8.0,
+                min_density=0.2,
+            ),
+        ]
+    else:
+        layers = list(CORE_LAYERS)
 
     pad_sections = []
     chord_stab_sections = []
@@ -296,8 +356,9 @@ def arrangement_planner_node(state: SongState) -> dict:
     seed = state.get("generation_seed", 0)
     orchestration = state.get("orchestration_plan")
     proposal = state.get("technical_proposal")
-    genre_tags = effective_genre_tags(state)
     energy = proposal.energy_level if proposal else 3
+    intent = state.get("intent")
+    use_case = intent.use_case if intent else "game"
 
     if orchestration:
         layers = _build_layers_from_orchestration(state, orchestration)
@@ -310,8 +371,8 @@ def arrangement_planner_node(state: SongState) -> dict:
         layer_ids,
         intent_map,
         generation_seed=seed,
-        genre_tags=genre_tags,
         energy_level=energy,
+        use_case=use_case,
     )
 
     arrangement = ArrangementPlan(

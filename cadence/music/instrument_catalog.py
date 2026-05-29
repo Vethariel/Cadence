@@ -3,6 +3,13 @@
 from __future__ import annotations
 
 from cadence.instruments.registry import get_instrument, list_instruments
+from cadence.music.repertoire_signals import (
+    enrich_orchestration_from_strategies,
+    instruments_implied_by_strategies,
+    lead_layers_for_fallback,
+    max_optional_budget,
+    percussion_suppressed,
+)
 from cadence.music.strategy_pools import resolve_rhythm_patterns
 from cadence.music.timbre_library import (
     BROWSER_SOUNDFONT,
@@ -51,12 +58,6 @@ MAX_LEAD_OPTIONALS = {
     "animation": 2,
 }
 
-_ORCHESTRAL_RICH_TAGS = frozenset({
-    "orchestral", "cinematic", "epic", "soundtrack", "film score",
-})
-
-
-
 def is_drum(instrument_id: str, role: str) -> bool:
     return role == "rhythm" or instrument_id in ("drums", "perc_aux")
 
@@ -69,42 +70,12 @@ def select_fallback_lead_layers(
     *,
     use_case: str,
     energy_level: int,
-    genre_tags: list[str],
+    genre_tags: list[str] | None = None,
     generation_seed: int,
 ) -> set[str]:
-    """Capas lead opcionales en fallback sin plan del agente."""
-    uc = (use_case or "game").lower()
-    max_n = MAX_LEAD_OPTIONALS.get(uc, 2)
-    if max_n == 0:
-        return set()
-
-    if uc == "cutscene" or energy_level <= 2:
-        return {"countermelody"} if energy_level >= 2 else set()
-
-    tags = _tags_lower(genre_tags)
-    if tags & {"chiptune", "8-bit", "arcade"}:
-        pool = ["arp_synth", "echo_synth"]
-    elif tags & {"ambient", "drone", "ethereal", "space"}:
-        return {"echo_synth"} if energy_level > 1 else set()
-    elif tags & {"dubstep", "brostep", "bass music"}:
-        pool = ["chord_stab", "synth_pluck", "perc_aux", "arp_synth"]
-    elif tags & {"orchestral", "epic", "cinematic", "soundtrack"}:
-        pool = ["countermelody", "echo_synth"]
-    elif tags & {"techno", "industrial", "dark", "ebm"}:
-        pool = ["chord_stab", "arp_synth", "synth_pluck"]
-    elif tags & {"boss fight", "energetic", "battle", "combat", "aggressive"}:
-        pool = ["arp_synth", "countermelody", "chord_stab", "echo_synth", "synth_pluck"]
-    else:
-        pool = ["arp_synth", "countermelody"]
-
-    n = min(max_n, 2 if energy_level >= 4 else 1)
-    chosen: list[str] = []
-    for i in range(n):
-        idx = (generation_seed // (29 * (i + 1))) % len(pool)
-        candidate = pool[idx]
-        if candidate not in chosen:
-            chosen.append(candidate)
-    return set(chosen)
+    """Capas lead opcionales en fallback — energía y rol."""
+    del genre_tags  # compatibilidad de firma; sin sesgo por tags
+    return lead_layers_for_fallback(energy_level, use_case, generation_seed)
 
 
 # Timbres GM permitidos por instrument_id.
@@ -316,19 +287,26 @@ def validate_orchestration(
     genre_tags: list[str] | None = None,
     generation_seed: int = 0,
     style_profile: MusicalStyleProfile | None = None,
+    strategies: object | None = None,
 ) -> OrchestrationPlan:
     """Corrige IDs, timbres GM, ritmo y presupuesto; garantiza núcleo drums/bass/melody."""
-    uc = (use_case or "game").lower()
-    tags = _tags_lower(genre_tags or [])
-    max_optional = MAX_OPTIONAL_BY_USE_CASE.get(uc, 4)
-    if tags & _ORCHESTRAL_RICH_TAGS and uc in ("game", "animation") and energy_level >= 4:
-        max_optional = min(max_optional + 1, 5)
-    if energy_level <= 2 and uc != "loop":
-        max_optional = min(max_optional, 2)
+    from cadence.schemas.song_state import GenerationStrategies
 
-    max_lead = MAX_LEAD_OPTIONALS.get(uc, 2)
-    if tags & _ORCHESTRAL_RICH_TAGS and energy_level >= 4:
-        max_lead = min(max_lead + 1, 3)
+    plan = enrich_orchestration_from_strategies(
+        plan,
+        strategies if isinstance(strategies, GenerationStrategies) else None,
+        energy_level=energy_level,
+        use_case=use_case,
+        generation_seed=generation_seed,
+        style_profile=style_profile,
+    )
+
+    max_optional, max_lead = max_optional_budget(use_case, energy_level)
+    protected = instruments_implied_by_strategies(
+        strategies if isinstance(strategies, GenerationStrategies) else None,
+        energy_level=energy_level,
+        use_case=use_case,
+    )
 
     known = set(list_instruments())
     by_id: dict[str, InstrumentAssignment] = {}
@@ -340,8 +318,15 @@ def validate_orchestration(
             item, generation_seed=generation_seed,
         )
 
+    suppress_drums = percussion_suppressed(
+        use_case=use_case,
+        energy_level=energy_level,
+        style_profile=style_profile,
+    )
     default_mix = {"drums": -10.0, "bass": -6.0, "melody": -8.0}
     for core in CORE_INSTRUMENTS:
+        if core == "drums" and suppress_drums:
+            continue
         if core not in by_id:
             by_id[core] = _assignment_from_timbre(
                 InstrumentAssignment(
@@ -360,6 +345,8 @@ def validate_orchestration(
         for iid in _TRIM_PRIORITY:
             if len(optionals) - len(to_remove) <= max_optional:
                 break
+            if iid in protected:
+                continue
             if iid in optionals:
                 to_remove.add(iid)
         for iid in to_remove:
@@ -367,9 +354,11 @@ def validate_orchestration(
 
     lead_present = [iid for iid in LEAD_OPTIONALS if iid in by_id]
     if len(lead_present) > max_lead:
-        for iid in ("echo_synth", "synth_pluck", "countermelody", "chord_stab", "arp_synth"):
+        for iid in ("fx_riser", "perc_aux", "synth_pluck", "chord_stab", "echo_synth", "countermelody", "arp_synth"):
             if len(lead_present) <= max_lead:
                 break
+            if iid in protected:
+                continue
             if iid in by_id:
                 del by_id[iid]
                 lead_present.remove(iid)

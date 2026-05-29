@@ -91,12 +91,13 @@ def test_different_seeds_pick_different_strategies():
     print("✓ test_different_seeds_pick_different_strategies OK")
 
 
-def test_genre_biases_drum_pattern():
-    techno = select_strategies(0, ["techno"], "minor")
-    dubstep = select_strategies(0, ["dubstep"], "minor")
-    assert techno.drum_pattern == "techno"
-    assert dubstep.drum_pattern == "dubstep"
-    print("✓ test_genre_biases_drum_pattern OK")
+def test_energy_biases_drum_pattern():
+    low = select_strategies(0, [], "minor", "loop", 1)
+    high = select_strategies(0, [], "minor", "game", 5)
+    assert low.drum_pattern in ("default", "halftime", "house")
+    assert high.drum_pattern in ("dubstep", "breakbeat", "dnb", "industrial", "techno")
+    assert high.harmony_pool in ("aggressive", "dance", "game")
+    print("✓ test_energy_biases_drum_pattern OK")
 
 
 def test_harmony_pool_changes_progression():
@@ -169,7 +170,7 @@ if __name__ == "__main__":
     test_generation_seed_deterministic()
     test_strategy_planner_node()
     test_different_seeds_pick_different_strategies()
-    test_genre_biases_drum_pattern()
+    test_energy_biases_drum_pattern()
     test_harmony_pool_changes_progression()
     test_drum_patterns_differ_by_strategy()
     test_bass_patterns_differ_by_strategy()

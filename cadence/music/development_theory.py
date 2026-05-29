@@ -65,12 +65,11 @@ def _phrase_length(density: float, seed: int) -> int:
     return 2 + (seed % 3)
 
 
-def _contour_for_role(role: str, seed: int, genre_tags: list[str] | None = None) -> str:
-    tags = {t.lower() for t in (genre_tags or [])}
+def _contour_for_role(role: str, seed: int, energy_level: int = 3) -> str:
     if role in ("climax", "tension"):
-        if tags & {"dubstep", "techno", "boss fight", "aggressive"}:
+        if energy_level >= 4:
             return "saw" if seed % 2 else "zigzag"
-        if tags & {"cinematic", "orchestral", "epic"}:
+        if energy_level <= 2:
             return "arch" if seed % 2 else "wave"
         return CONTOUR_OPTIONS[seed % 4]
     if role in ("reflection", "silence"):
@@ -85,7 +84,7 @@ def build_section_development(
     intent: SectionIntent | None,
     global_motif: list[int],
     seed: int,
-    genre_tags: list[str] | None = None,
+    energy_level: int = 3,
 ) -> SectionDevelopment:
     role = intent.narrative_role if intent else "establish"
     density = intent.density if intent else 0.5
@@ -96,7 +95,7 @@ def build_section_development(
         section_id=section_id,
         transform=transform,
         phrase_length_bars=_phrase_length(density, section_seed),
-        contour=_contour_for_role(role, section_seed, genre_tags),
+        contour=_contour_for_role(role, section_seed, energy_level),
         motif_variant=_transform_motif(motif, transform, section_seed),
     )
 
@@ -106,7 +105,7 @@ def build_development_plan(
     global_motif: list[int],
     narrative_sections: dict[str, SectionIntent] | None = None,
     generation_seed: int = 0,
-    genre_tags: list[str] | None = None,
+    energy_level: int = 3,
 ) -> DevelopmentPlan:
     motif = global_motif or DEFAULT_MOTIF
     section_devs = [
@@ -115,7 +114,7 @@ def build_development_plan(
             intent=narrative_sections.get(s) if narrative_sections else None,
             global_motif=motif,
             seed=generation_seed,
-            genre_tags=genre_tags,
+            energy_level=energy_level,
         )
         for s in sections
     ]

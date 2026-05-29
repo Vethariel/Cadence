@@ -49,10 +49,12 @@ def test_strategies_include_layer_patterns():
     assert s.echo_source in ("auto", "melody", "arp_synth", "chord_stab")
 
 
-def test_dance_repertoire_bias_prefers_dense_patterns():
-    s = select_strategies(42, ["boss fight", "techno"], "minor", "game", 5)
+def test_high_energy_repertoire_prefers_dense_patterns():
+    s = select_strategies(42, [], "minor", "game", 5)
     assert s.arp_pattern in ("sixteenth", "cascade", "broken", "syncopated", "octave")
-    assert s.harmony_pool in ("aggressive", "dance", "dark", "game", "classic", "modal", "cinematic")
+    from cadence.music.repertoire_signals import harmony_pool_priority
+    top = harmony_pool_priority(5, "game")[:4]
+    assert s.harmony_pool in top
 
 
 def test_synth_pluck_registered():
@@ -73,7 +75,7 @@ if __name__ == "__main__":
     test_harmony_pools_expanded()
     test_instrument_pattern_pools()
     test_strategies_include_layer_patterns()
-    test_dance_repertoire_bias_prefers_dense_patterns()
+    test_high_energy_repertoire_prefers_dense_patterns()
     test_synth_pluck_registered()
     test_format_layer_patterns_for_llm()
     print("All repertoire expansion tests passed.")

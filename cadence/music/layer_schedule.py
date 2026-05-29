@@ -184,29 +184,13 @@ def _plan_section_layers(
     return to_remove, candidates
 
 
-def _density_thresholds_for_genres(genre_tags: list[str] | None) -> dict[str, float]:
-    """Ajusta umbrales según género (más arp en dance, menos pad en agresivo)."""
-    if not genre_tags:
-        return {}
-    tags = {t.lower() for t in genre_tags}
-    out: dict[str, float] = {}
-    if tags & {"ambient", "cinematic", "ethereal", "space"}:
-        out["arp"] = 0.75
-        out["pad"] = 0.15
-    if tags & {"dubstep", "techno", "brostep", "industrial", "boss fight"}:
-        out["arp"] = 0.55
-        out["pluck"] = 0.42
-        out["pad"] = 0.35
-        out["echo"] = 0.48
-    if tags & {"cinematic", "orchestral", "epic", "soundtrack", "film score"}:
-        out["arp"] = 0.50
-        out["pad"] = 0.18
-        out["pluck"] = 0.38
-        out["counter"] = 0.38
-        out["chord_stab"] = 0.38
-        out["perc"] = 0.38
-        out["echo"] = 0.45
-    return out
+def _density_thresholds_for_piece(
+    energy_level: int,
+    use_case: str | None,
+) -> dict[str, float]:
+    from cadence.music.repertoire_signals import schedule_density_thresholds
+
+    return schedule_density_thresholds(energy_level, use_case or "game")
 
 
 def build_layer_schedule(
@@ -216,6 +200,7 @@ def build_layer_schedule(
     generation_seed: int = 0,
     genre_tags: list[str] | None = None,
     energy_level: int = 3,
+    use_case: str = "game",
 ) -> LayerSchedule:
     """
     Construye entradas/salidas de capas a lo largo de la pieza.
@@ -224,7 +209,8 @@ def build_layer_schedule(
     available = set(layer_ids)
     intent_map = narrative_sections or {}
     active: set[str] = set(CORE_LAYERS) & available
-    genre_adj = _density_thresholds_for_genres(genre_tags)
+    del genre_tags  # compatibilidad; umbrales por energía/rol
+    genre_adj = _density_thresholds_for_piece(energy_level, use_case)
     thresholds = _layer_thresholds(genre_adj)
 
     global_bar = 0

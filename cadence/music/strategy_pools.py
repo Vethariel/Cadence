@@ -8,6 +8,12 @@ from cadence.music.instrument_patterns import (
     PLUCK_PATTERN_POOL,
     STAB_PATTERN_POOL,
 )
+from cadence.music.repertoire_signals import (
+    bass_pool_priority,
+    drum_pool_priority,
+    harmony_pool_priority,
+    layer_pattern_bias,
+)
 
 # ── Patrones de batería (16 steps, 4/4) ───────────────────────
 
@@ -254,42 +260,7 @@ def format_rhythm_patterns_for_llm() -> str:
     return "\n".join(lines)
 
 
-_DRUM_TAG_ALIASES: dict[str, str] = {
-    "drum and bass": "dnb",
-    "liquid dnb": "dnb",
-    "neurofunk": "dnb",
-    "brostep": "dubstep",
-    "melodic dubstep": "dubstep",
-    "industrial techno": "industrial",
-    "ebm": "industrial",
-    "half-time": "halftime",
-}
-
-
-def _genre_drum_bias(genre_tags: list[str]) -> list[str]:
-    """Ordena candidatos de batería priorizando tags del prompt."""
-    tags_lower = [t.lower() for t in genre_tags]
-    preferred: list[str] = []
-    for tag in tags_lower:
-        if tag in DRUM_POOL and tag not in preferred:
-            preferred.append(tag)
-        alias = _DRUM_TAG_ALIASES.get(tag)
-        if alias and alias not in preferred:
-            preferred.append(alias)
-        for pool_id in DRUM_POOL:
-            if pool_id in tag and pool_id not in preferred:
-                preferred.append(pool_id)
-    for pool_id in DRUM_POOL:
-        if pool_id not in preferred:
-            preferred.append(pool_id)
-    return preferred
-
-
 ECHO_SOURCE_POOL = ("auto", "melody", "arp_synth", "chord_stab")
-
-
-def _tags_set(genre_tags: list[str]) -> set[str]:
-    return {t.lower() for t in genre_tags}
 
 
 def _pick_biased(candidates: list[str], pool: tuple[str, ...], seed: int, salt: int) -> str:
@@ -297,83 +268,6 @@ def _pick_biased(candidates: list[str], pool: tuple[str, ...], seed: int, salt: 
         if pid in pool:
             return pid
     return pool[(seed // salt) % len(pool)]
-
-
-def _repertoire_layer_bias(
-    genre_tags: list[str],
-    energy_level: int,
-    use_case: str,
-) -> dict[str, str | list[str]]:
-    """
-    Sesgos de repertorio por género/energía — no copia MIDIs, amplía variedad útil.
-    """
-    tags = _tags_set(genre_tags)
-    uc = (use_case or "game").lower()
-    bias: dict[str, str | list[str]] = {"echo_source": "auto"}
-
-    dance_tags = tags & {
-        "techno", "dubstep", "brostep", "house", "trance", "edm",
-        "boss fight", "combat", "aggressive", "energetic", "battle",
-    }
-    orchestral_tags = tags & {"orchestral", "cinematic", "epic", "soundtrack", "film score"}
-    organ_tags = tags & {"touhou", "hyperpop", "organ", "anime"}
-
-    if energy_level >= 4 or dance_tags:
-        bias["arp_candidates"] = [
-            "sixteenth", "cascade", "broken", "syncopated", "octave",
-        ] + list(ARP_PATTERNS)
-        bias["stab_candidates"] = [
-            "sixteenth", "dubstep_off", "four_on", "syncopated", "offbeat",
-        ] + list(STAB_PATTERN_POOL)
-        bias["perc_candidates"] = ["syncopated", "four_clap", "backbeat"] + list(PERC_PATTERN_POOL)
-        bias["pluck_candidates"] = ["sixteenth", "eighth", "syncopated"] + list(PLUCK_PATTERN_POOL)
-        bias["counter_candidates"] = ["offbeat_sync", "sixteenth", "syncopated"] + list(
-            COUNTER_PATTERN_POOL
-        )
-        bias["bass_candidates"] = ["octave_pulse", "driving", "syncopated", "half_time"]
-        if tags & {"dubstep", "brostep", "boss fight"}:
-            bias["echo_source"] = "arp_synth"
-        elif energy_level >= 5:
-            bias["echo_source"] = "melody"
-
-    if orchestral_tags and uc != "loop":
-        bias.setdefault("stab_candidates", []).insert(0, "orchestral_sync")  # type: ignore
-        bias.setdefault("counter_candidates", []).insert(0, "orchestral_sync")  # type: ignore
-        bias["echo_source"] = "chord_stab"
-
-    if organ_tags:
-        bias.setdefault("stab_candidates", []).insert(0, "organ_offbeat")  # type: ignore
-
-    if energy_level <= 2 or uc == "loop":
-        bias["arp_candidates"] = ["up", "broken", "pingpong"]
-        bias["stab_candidates"] = ["sparse", "half_bar", "offbeat"]
-        bias["counter_candidates"] = ["sparse", "backbeat"]
-        bias["pluck_candidates"] = ["sparse", "eighth"]
-        bias["echo_source"] = "melody"
-
-    return bias
-
-
-def _harmony_pool_bias(genre_tags: list[str]) -> list[str]:
-    tags_lower = [t.lower() for t in genre_tags]
-    preferred: list[str] = []
-    for tag in tags_lower:
-        if tag in HARMONY_POOL and tag not in preferred:
-            preferred.append(tag)
-        if "cinematic" in tag or "orchestral" in tag or "epic" in tag:
-            if "cinematic" not in preferred:
-                preferred.append("cinematic")
-        if tag in ("dark", "aggressive", "boss fight", "combat", "industrial"):
-            for pid in ("aggressive", "dark"):
-                if pid not in preferred:
-                    preferred.append(pid)
-        if tag in ("dance", "party", "house", "techno", "eurodance"):
-            if "dance" not in preferred:
-                preferred.append("dance")
-    for pool_id in HARMONY_POOL:
-        if pool_id not in preferred:
-            preferred.append(pool_id)
-    return preferred
 
 
 def select_strategies(
@@ -384,17 +278,17 @@ def select_strategies(
     energy_level: int = 3,
 ) -> GenerationStrategies:
     """Elige una estrategia de cada pool usando generation_seed y sesgo de repertorio."""
-    drum_candidates = _genre_drum_bias(genre_tags)
+    drum_candidates = drum_pool_priority(energy_level, use_case)
     drum_pattern = drum_candidates[generation_seed % len(drum_candidates)]
 
-    layer_bias = _repertoire_layer_bias(genre_tags, energy_level, use_case)
+    layer_bias = layer_pattern_bias(energy_level, use_case, generation_seed)
     bass_candidates = layer_bias.get("bass_candidates")
     if isinstance(bass_candidates, list):
         bass_pattern = _pick_biased(bass_candidates, tuple(BASS_POOL), generation_seed, 7)
     else:
         bass_pattern = BASS_POOL[(generation_seed // 7) % len(BASS_POOL)]
 
-    harmony_candidates = _harmony_pool_bias(genre_tags)
+    harmony_candidates = harmony_pool_priority(energy_level, use_case)
     harmony_pool = harmony_candidates[(generation_seed // 13) % len(harmony_candidates)]
 
     arp_cands = layer_bias.get("arp_candidates")
@@ -471,7 +365,7 @@ def resolve_rhythm_patterns(
     bass = bass_pattern if bass_pattern in BASS_POOL else None
 
     if drum is None:
-        candidates = _genre_drum_bias(genre_tags)
+        candidates = drum_pool_priority(energy_level, use_case)
         drum = candidates[generation_seed % len(candidates)]
 
     if bass is None:

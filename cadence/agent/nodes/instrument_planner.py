@@ -19,6 +19,7 @@ from cadence.music.instrument_patterns import (
     STAB_PATTERN_POOL,
     format_layer_patterns_for_llm,
 )
+from cadence.music.repertoire_signals import resolve_harmony_pool_choice
 from cadence.music.strategy_pools import ECHO_SOURCE_POOL
 from cadence.music.strategy_pools import (
     BASS_POOL,
@@ -40,6 +41,9 @@ class _AgentOrchestrationOutput(OrchestrationPlan):
 def _apply_plan_to_strategies(
     strategies: GenerationStrategies | None,
     plan: OrchestrationPlan,
+    *,
+    energy_level: int = 3,
+    use_case: str = "game",
 ) -> GenerationStrategies:
     """Drum/bass siempre vienen del agente; arp/harmony solo si el agente los override."""
     base = strategies or GenerationStrategies(
@@ -53,8 +57,12 @@ def _apply_plan_to_strategies(
     }
     if plan.arp_pattern in ARP_PATTERNS:
         updates["arp_pattern"] = plan.arp_pattern
-    if plan.harmony_pool in HARMONY_POOL:
-        updates["harmony_pool"] = plan.harmony_pool
+    updates["harmony_pool"] = resolve_harmony_pool_choice(
+        plan.harmony_pool or None,
+        base.harmony_pool,
+        energy_level=energy_level,
+        use_case=use_case,
+    )
     if plan.stab_pattern in STAB_PATTERN_POOL:
         updates["stab_pattern"] = plan.stab_pattern
     if plan.perc_pattern in PERC_PATTERN_POOL:
@@ -175,10 +183,16 @@ def instrument_planner_node(state: SongState) -> dict:
         genre_tags=proposal.genre_tags,
         generation_seed=seed,
         style_profile=profile,
+        strategies=strategies,
     )
 
     return {
         "orchestration_plan": plan,
-        "strategies": _apply_plan_to_strategies(strategies, plan),
+        "strategies": _apply_plan_to_strategies(
+            strategies,
+            plan,
+            energy_level=proposal.energy_level,
+            use_case=intent.use_case,
+        ),
         **extra,
     }
