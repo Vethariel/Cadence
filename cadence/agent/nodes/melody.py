@@ -1,7 +1,6 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
-import math
 
 from cadence.config import settings
 from cadence.schemas.song_state import SongNarrative, SongState, Track, RhythmEvent
@@ -16,6 +15,8 @@ from cadence.music.harmony_theory import (
     harmony_summary_for_section,
     section_harmony_map,
 )
+from cadence.music.development_theory import section_development_map
+from cadence.music.melody_phrases import phrases_to_events, fix_phrase_steps
 
 
 # ── Escalas ───────────────────────────────────────────────────
@@ -33,32 +34,46 @@ KEY_MIDI_ROOT = {
 }
 
 
-# ── Salida estructurada del LLM ───────────────────────────────
-# El LLM genera UN PATRÓN de exactamente 16 steps (1 bar)
-# El código se encarga de repetirlo para cubrir todos los compases
+# ── Salida estructurada del LLM — frases 2-4 compases ─────────
 
 class MelodyNote(BaseModel):
     scale_degree: int = Field(ge=0, le=6)
     octave_offset: int = Field(ge=-1, le=1, default=0)
     duration_steps: int = Field(
-        description="Steps de 1/16 que ocupa esta nota. Valores: 1, 2, 4.",
-        ge=1, le=4
+        description="Steps de 1/16. Valores: 1, 2, 4.",
+        ge=1, le=4,
     )
     velocity: int = Field(ge=40, le=127)
     is_rest: bool = Field(default=False)
 
-class SectionPattern(BaseModel):
-    section: str
+
+class MelodyPhrase(BaseModel):
+    bars: int = Field(
+        ge=2, le=4,
+        description="Duración de la frase en compases (2-4).",
+    )
     pattern: list[MelodyNote] = Field(
         description=(
-            "Patrón de exactamente 1 bar (16 steps de 1/16). "
-            "La suma de duration_steps de todas las notas debe ser exactamente 16. "
-            "Mínimo 4 notas, máximo 16."
+            "Patrón de la frase. La suma de duration_steps debe ser "
+            "exactamente bars * 16."
         )
     )
 
+
+class SectionPhrases(BaseModel):
+    section: str
+    phrases: list[MelodyPhrase] = Field(
+        min_length=2,
+        max_length=4,
+        description=(
+            "2-4 frases por sección. Frase 1 = pregunta, frase 2 = respuesta. "
+            "Cada frase debe ser distinta (contorno complementario)."
+        ),
+    )
+
+
 class MelodyComposerOutput(BaseModel):
-    section_patterns: list[SectionPattern]
+    section_phrases: list[SectionPhrases]
 
 
 # ── Helpers ───────────────────────────────────────────────────
@@ -68,118 +83,52 @@ def _get_scale_pitches(key: str, mode: str) -> list[int]:
     intervals = SCALES.get(mode, SCALES["minor"])
     return [root + i for i in intervals]
 
+
 def _ms_per_step(bpm: int) -> float:
     return (60000 / bpm) / 4
 
-def _fix_pattern_steps(pattern: list[MelodyNote]) -> list[MelodyNote]:
-    """Ajusta el patrón para que sume exactamente 16 steps."""
-    total = sum(n.duration_steps for n in pattern)
-    if total == 16:
-        return pattern
-    if total < 16:
-        # Agregar silencio al final
-        pattern = list(pattern)
-        pattern.append(MelodyNote(
-            scale_degree=0,
-            octave_offset=0,
-            duration_steps=16 - total,
-            velocity=80,
-            is_rest=True,
-        ))
-    else:
-        # Truncar hasta llegar a 16
-        fixed = []
-        acc = 0
-        for note in pattern:
-            remaining = 16 - acc
-            if remaining <= 0:
-                break
-            if note.duration_steps > remaining:
-                note = note.model_copy(update={"duration_steps": remaining})
-            fixed.append(note)
-            acc += note.duration_steps
-        pattern = fixed
-    return pattern
 
-def _vary_pattern_for_bar(
-    pattern: list[MelodyNote],
-    bar_idx: int,
-    global_motif: list[int],
-) -> list[MelodyNote]:
-    """Variación intra-sección A / A' / B usando el motivo global."""
-    if bar_idx % 2 == 1:
-        return [
-            note.model_copy(update={"scale_degree": (note.scale_degree + 1) % 7})
-            if not note.is_rest else note
-            for note in pattern
-        ]
-    if global_motif and bar_idx % 4 == 2:
-        varied = list(pattern)
-        note_idx = 0
-        for i, note in enumerate(varied):
-            if note.is_rest:
-                continue
-            if note_idx < len(global_motif):
-                varied[i] = note.model_copy(update={
-                    "scale_degree": global_motif[note_idx] % 7,
-                })
-                note_idx += 1
-        return varied
-    return pattern
-
-def _pattern_to_events(
-    pattern: list[MelodyNote],
-    section: str,
-    bars: int,
-    start_t: float,
-    bpm: int,
-    scale_pitches: list[int],
-    beat_index_start: int,
-    global_motif: list[int] | None = None,
-) -> tuple[list[RhythmEvent], float, int]:
-    """Repite el patrón de 1 bar para cubrir todos los compases de la sección."""
-    step_ms = _ms_per_step(bpm)
-    steps_per_bar = 16
-    events = []
-    current_t = start_t
-    beat_index = beat_index_start
-    motif = global_motif or []
-
-    for bar in range(bars):
-        bar_pattern = _vary_pattern_for_bar(pattern, bar, motif)
-        for note in bar_pattern:
-            duration_ms = int(note.duration_steps * step_ms * 0.92)
-            if not note.is_rest:
-                degree = max(0, min(6, note.scale_degree))
-                pitch = scale_pitches[degree] + note.octave_offset * 12
-                pitch = max(21, min(108, pitch))
-                events.append(RhythmEvent(
-                    t=int(current_t),
-                    type="note",
-                    pitch=pitch,
-                    duration_ms=duration_ms,
-                    velocity=note.velocity,
-                    beat_index=beat_index,
-                    section=section,
-                ))
-            current_t += note.duration_steps * step_ms
-            beat_index += note.duration_steps
-
-    return events, current_t, beat_index
+def _fix_section_phrases(phrases: list[MelodyPhrase]) -> list[MelodyPhrase]:
+    fixed = []
+    for phrase in phrases:
+        total_steps = phrase.bars * 16
+        pattern = fix_phrase_steps(phrase.pattern, total_steps)
+        fixed.append(phrase.model_copy(update={"pattern": pattern}))
+    return fixed
 
 
-# ── Nodo ─────────────────────────────────────────────────────
+def _development_hint(state: SongState) -> str:
+    development = state.get("development")
+    if not development:
+        return ""
+    lines = ["Plan de desarrollo motivico:"]
+    for dev in development.sections:
+        motif = ", ".join(str(d) for d in dev.motif_variant)
+        lines.append(
+            f"  - {dev.section_id}: transform={dev.transform}, "
+            f"contour={dev.contour}, phrase_bars={dev.phrase_length_bars}, "
+            f"motif=[{motif}]"
+        )
+    lines.append(
+        "Frase 1 debe presentar el motivo; frase 2 debe contrastar "
+        "(registro, ritmo o contorno). Evita repetir la misma frase."
+    )
+    return "\n".join(lines) + "\n"
+
+
+# ── Composición ───────────────────────────────────────────────
 
 def compose_melody_track(state: SongState) -> Track:
-    """Genera el track de melodía (LLM). Usado por registry y nodo legacy."""
+    """Genera melodía por frases 2-4 compases con desarrollo motivico."""
     intent = state["intent"]
     proposal = state.get("technical_proposal")
     structure = state["structure"]
     validation = state.get("validation_result")
     narrative: SongNarrative | None = state.get("narrative")
     harmony = state.get("harmony")
+    development = state.get("development")
     intent_map = section_intent_map(narrative)
-    global_motif = list(narrative.global_motif) if narrative else []
+    dev_map = section_development_map(development)
 
     if proposal:
         bpm = proposal.bpm
@@ -197,32 +146,29 @@ def compose_melody_track(state: SongState) -> Track:
     scale_pitches = _get_scale_pitches(key, mode)
 
     repair_context = ""
-    temperature = 0.7
-    variety_hint = ""
+    temperature = 0.85
+    variety_hint = (
+        "\n- OBLIGATORIO: cada frase debe sumar exactamente bars*16 steps.\n"
+        "- OBLIGATORIO: frase 2 (respuesta) debe diferir de frase 1 en "
+        "al menos 3 notas o contorno inverso.\n"
+        "- Usa saltos de 3-5 semitonos (scale_degree ±2) para contorno activo.\n"
+        "- Incluye silencios estratégicos (is_rest) al final de frases."
+    )
 
     if validation and not validation.passed and state.get("retry_count", 0) > 0:
         failed = failed_check_names(validation.errors)
         errors_str = "\n".join(f"  - {e}" for e in validation.errors)
         repair_context = (
-            f"\n\nATENCIÓN — intento de reparación #{state['retry_count']}. "
-            f"Errores anteriores:\n{errors_str}\nCorrige estos problemas."
+            f"\n\nATENCIÓN — intento de reparación #{state['retry_count']}.\n"
+            f"Errores:\n{errors_str}\n"
         )
-        if "melody_variety" in failed:
-            temperature = min(1.0, 0.7 + state.get("retry_count", 0) * 0.12)
-            variety_hint = (
-                "\n- OBLIGATORIO: usa al menos 4 scale_degree distintos y "
-                "varía octave_offset (-1, 0, 1) para crear contorno melódico."
+        if "melody_variety" in failed or "melody_loop" in failed:
+            temperature = min(1.0, 0.85 + state.get("retry_count", 0) * 0.1)
+            variety_hint += (
+                "\n- OBLIGATORIO: mínimo 5 scale_degree distintos por sección."
             )
         if "melody_coverage" in failed:
-            variety_hint += (
-                "\n- OBLIGATORIO: cada patrón debe sumar exactamente 16 steps; "
-                "el sistema lo repetirá en todos los compases de la sección."
-            )
-        if "pitch_range" in failed:
-            variety_hint += (
-                "\n- OBLIGATORIO: usa solo scale_degree 0-6 con octave_offset "
-                "en rango -1 a 1; no generes notas fuera de la escala."
-            )
+            variety_hint += "\n- OBLIGATORIO: cubre todas las secciones activas."
 
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
@@ -235,18 +181,15 @@ def compose_melody_track(state: SongState) -> Track:
         section_lines = []
         for s in narrative.sections:
             hint = narrative_melody_hint(s)
-            section_lines.append(
-                f"  - {s.id}: {hint}, transition_out={s.transition_out}"
-            )
-        motif_str = ", ".join(str(d) for d in global_motif) if global_motif else "none"
+            dev = dev_map.get(s.id)
+            dev_str = f"transform={dev.transform}" if dev else ""
+            section_lines.append(f"  - {s.id}: {hint}, {dev_str}")
+        motif_str = ", ".join(str(d) for d in narrative.global_motif) if narrative.global_motif else "none"
         narrative_block = (
             f"\nGuion narrativo:\n"
             f"  logline: {narrative.logline}\n"
-            f"  arc: {narrative.arc_type}\n"
-            f"  global_motif (scale degrees): [{motif_str}]\n"
-            f"  Por sección:\n" + "\n".join(section_lines) + "\n"
-            f"Usa global_motif como base melódica en intro/verse; "
-            f"desarróllalo en climax/drop.\n"
+            f"  global_motif: [{motif_str}]\n"
+            + "\n".join(section_lines) + "\n"
         )
 
     harmony_block = ""
@@ -256,57 +199,55 @@ def compose_melody_track(state: SongState) -> Track:
             summary = harmony_summary_for_section(harmony, section_id)
             if summary:
                 sh = section_harmony_map(harmony).get(section_id)
-                chord_degrees = []
-                if sh:
-                    for c in sh.progression:
-                        chord_degrees.append(str(chord_tones_as_degrees(c)))
-                h_lines.append(
-                    f"  - {section_id}: progresión {summary} | "
-                    f"grados por acorde: {', '.join(chord_degrees)}"
-                )
+                degrees = [str(chord_tones_as_degrees(c)) for c in sh.progression] if sh else []
+                h_lines.append(f"  - {section_id}: {summary} | acordes: {', '.join(degrees)}")
         harmony_block = (
             f"\nPlan armónico ({harmony.key} {harmony.mode}):\n"
             + "\n".join(h_lines) + "\n"
-            "Prioriza scale_degree que coincidan con los grados del acorde activo "
-            "(root, third, fifth). La melodía debe sonar consonante con bajo y pad.\n"
         )
+
+    dev_block = _development_hint(state)
+
+    # phrase length hints per section
+    phrase_hints = []
+    for section_id in structure.sections:
+        dev = dev_map.get(section_id)
+        if dev:
+            phrase_hints.append(f"  - {section_id}: frases de {dev.phrase_length_bars} compases")
 
     system = SystemMessage(content=(
         "Eres un compositor experto en música electrónica para videojuegos.\n"
-        "Tu tarea es componer UN PATRÓN DE 1 BAR (16 steps de 1/16) por sección.\n"
-        "El sistema repetirá automáticamente ese patrón para cubrir toda la sección.\n\n"
-        "REGLA CRÍTICA: la suma de duration_steps de todas las notas del patrón "
-        "debe ser EXACTAMENTE 16.\n\n"
-        "Guía por sección:\n"
-        "- intro/outro: notas largas (duration_steps 4), pocas notas, melodía simple\n"
-        "- build-up/verse: notas medias (duration_steps 2), patrón repetitivo\n"
-        "- drop/climax: notas cortas (duration_steps 1-2), denso y agresivo\n"
-        "- breakdown: mayoría silencios (is_rest=True), muy esparso\n"
-        f"{harmony_block}"
-        f"{narrative_block}"
+        "Compones FRASES de 2-4 compases (NO loops de 1 compás).\n"
+        "Por sección: 2 frases mínimo — frase A (pregunta) y frase B (respuesta).\n\n"
+        "REGLA CRÍTICA: suma de duration_steps = bars * 16 por cada frase.\n\n"
+        "Estilo de fraseo:\n"
+        "- Pregunta: ascendente o arco, termina en silencio o nota tensa\n"
+        "- Respuesta: desciende o resuelve a tónica/grado 0\n"
+        "- Drop/climax: notas cortas (1-2 steps), denso\n"
+        "- Breakdown: mayoría silencios\n"
+        f"{harmony_block}{dev_block}{narrative_block}"
+        f"Longitud sugerida:\n" + "\n".join(phrase_hints) + "\n"
         f"{variety_hint}\n"
-        "Responde SOLO con el objeto estructurado, sin texto adicional."
+        "Responde SOLO con el objeto estructurado."
     ))
 
     human = HumanMessage(content=(
         f"Canción: {key} {mode} | {bpm} BPM | Géneros: {', '.join(genre_tags)}\n"
-        f"Mood: {intent.mood} | Energía: {energy_level}/5 | Uso: {intent.use_case}\n"
+        f"Mood: {intent.mood} | Energía: {energy_level}/5\n"
         f"Secciones: {structure.sections}\n"
-        f"Grados disponibles (0-6): tónica=0, segunda=1, tercera=2, "
-        f"cuarta=3, quinta=4, sexta=5, séptima=6\n"
+        f"Grados 0-6 (tónica=0 … séptima=6)\n"
         f"{repair_context}"
     ))
 
     result: MelodyComposerOutput = llm.invoke([system, human])
 
-    # Construir eventos repitiendo cada patrón
-    all_events = []
+    all_events: list[RhythmEvent] = []
     current_t = 0.0
     beat_index = 0
     step_ms = _ms_per_step(bpm)
     steps_per_bar = 16
 
-    pattern_map = {sp.section: sp.pattern for sp in result.section_patterns}
+    phrase_map = {sp.section: sp.phrases for sp in result.section_phrases}
 
     for section in structure.sections:
         bars = structure.bars_per_section.get(section, 4)
@@ -317,17 +258,18 @@ def compose_melody_track(state: SongState) -> Track:
             beat_index += bars * steps_per_bar
             continue
 
-        if section in pattern_map:
-            pattern = _fix_pattern_steps(pattern_map[section])
-            section_events, current_t, beat_index = _pattern_to_events(
-                pattern=pattern,
+        if section in phrase_map:
+            phrases = _fix_section_phrases(phrase_map[section])
+            dev = dev_map.get(section)
+            section_events, current_t, beat_index = phrases_to_events(
+                phrases=phrases,
                 section=section,
-                bars=bars,
+                total_bars=bars,
                 start_t=current_t,
                 bpm=bpm,
                 scale_pitches=scale_pitches,
                 beat_index_start=beat_index,
-                global_motif=global_motif,
+                development=dev,
             )
             all_events.extend(section_events)
         else:

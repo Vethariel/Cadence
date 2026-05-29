@@ -6,6 +6,7 @@ import cadence.instruments.pad_inst  # noqa: F401
 import cadence.instruments.melody_inst  # noqa: F401
 import cadence.instruments.fx_riser  # noqa: F401
 import cadence.instruments.perc_aux  # noqa: F401
+import cadence.instruments.countermelody  # noqa: F401
 
 from cadence.instruments.registry import (
     compose_layer,

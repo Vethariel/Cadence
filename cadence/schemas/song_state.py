@@ -109,6 +109,26 @@ class ArrangementPlan(BaseModel):
         description="Capas obligatorias para pasar validación.",
     )
 
+class SectionDevelopment(BaseModel):
+    """Cómo evoluciona el motivo en una sección."""
+    section_id: str
+    transform: Literal[
+        "introduce", "sequence_up", "sequence_down", "invert",
+        "fragment", "expand", "climax", "resolve", "sparse",
+    ]
+    phrase_length_bars: int = Field(ge=2, le=4, default=2)
+    contour: Literal["ascending", "descending", "arch", "zigzag", "wave"] = "arch"
+    motif_variant: list[int] = Field(
+        default_factory=list,
+        description="Motivo transformado (grados 0-6) para esta sección.",
+    )
+
+class DevelopmentPlan(BaseModel):
+    """Plan de desarrollo motivico — variación sin repetición obvia."""
+    global_motif: list[int] = Field(default_factory=list)
+    sections: list[SectionDevelopment]
+    generation_seed: int = 0
+
 class HarmonyPlan(BaseModel):
     """Plan armónico compartido por bajo, melodía y pad."""
     key: str
@@ -156,7 +176,9 @@ class SongState(MessagesState):
     narrative: Optional[SongNarrative] = None
     structure: Optional[SongStructure] = None
     harmony: Optional[HarmonyPlan] = None
+    development: Optional[DevelopmentPlan] = None
     arrangement: Optional[ArrangementPlan] = None
+    generation_seed: int = 0
 
     # — Composición
     tracks: list[Track] = Field(default_factory=list)

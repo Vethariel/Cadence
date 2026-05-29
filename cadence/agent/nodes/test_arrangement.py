@@ -76,7 +76,7 @@ def _boss_fight_state():
 
 def test_registry_has_core_instruments():
     ids = list_instruments()
-    for required in ("drums", "bass", "melody", "pad", "fx_riser", "perc_aux"):
+    for required in ("drums", "bass", "melody", "pad", "fx_riser", "perc_aux", "countermelody"):
         assert required in ids, f"{required} no registrado"
     assert get_instrument("drums").requires_llm is False
     assert get_instrument("melody").requires_llm is True

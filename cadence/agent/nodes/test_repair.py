@@ -15,16 +15,19 @@ def test_melody_coverage_routes_to_melody():
     state = _state_with_errors([
         "[melody_coverage] Melodía cubre solo 40% de la duración total.",
     ])
-    assert determine_repair_layers(state) == ["melody"]
-    print("✓ melody_coverage → [melody]")
+    layers = determine_repair_layers(state)
+    assert "melody" in layers
+    assert "countermelody" in layers
+    print("✓ melody_coverage → melody + countermelody")
 
 
 def test_melody_variety_routes_to_melody():
     state = _state_with_errors([
         "[melody_variety] Melodía demasiado monótona: solo 1 pitch(es) únicos.",
     ])
-    assert determine_repair_layers(state) == ["melody"]
-    print("✓ melody_variety → [melody]")
+    layers = determine_repair_layers(state)
+    assert "melody" in layers
+    print("✓ melody_variety → melody layers")
 
 
 def test_missing_drums_routes_to_rhythm_layers():
@@ -40,7 +43,8 @@ def test_missing_melody_routes_to_melody():
     state = _state_with_errors([
         "[tracks_present] Tracks faltantes: {'melody'}",
     ])
-    assert determine_repair_layers(state) == ["melody"]
+    layers = determine_repair_layers(state)
+    assert layers == ["melody"]
     print("✓ tracks_present (melody) → [melody]")
 
 
@@ -57,8 +61,9 @@ def test_pitch_range_routes_to_melody():
     state = _state_with_errors([
         "[pitch_range] 3 notas fuera de rango MIDI (21-108): [10, 12, 15]",
     ])
-    assert determine_repair_layers(state) == ["melody"]
-    print("✓ pitch_range → [melody]")
+    layers = determine_repair_layers(state)
+    assert "melody" in layers
+    print("✓ pitch_range → melody layers")
 
 
 def test_timing_drums_routes_to_rhythm():

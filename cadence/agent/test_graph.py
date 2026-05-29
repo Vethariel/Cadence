@@ -11,7 +11,9 @@ def test_graph_non_technical():
         "technical_proposal": None,
         "narrative": None,
         "harmony": None,
+        "development": None,
         "arrangement": None,
+        "generation_seed": 0,
         "structure": None,
         "tracks": [],
         "validation_result": None,
@@ -36,6 +38,8 @@ def test_graph_non_technical():
     assert final_state["technical_proposal"] is not None
     assert final_state["narrative"] is not None
     assert final_state["harmony"] is not None
+    assert final_state["development"] is not None
+    assert final_state["generation_seed"] > 0
     assert final_state["arrangement"] is not None
     assert len(final_state["arrangement"].layers) >= 3
     assert len(final_state["harmony"].sections) == len(final_state["structure"].sections)
@@ -59,7 +63,9 @@ def test_graph_technical():
         "technical_proposal": None,
         "narrative": None,
         "harmony": None,
+        "development": None,
         "arrangement": None,
+        "generation_seed": 0,
         "structure": None,
         "tracks": [],
         "validation_result": None,
@@ -86,6 +92,8 @@ def test_graph_technical():
     assert final_state["technical_proposal"].mode == "minor"
     assert final_state["narrative"] is not None
     assert final_state["harmony"] is not None
+    assert final_state["development"] is not None
+    assert final_state["generation_seed"] > 0
     assert final_state["arrangement"] is not None
     assert len(final_state["arrangement"].layers) >= 3
     assert len(final_state["harmony"].sections) == len(final_state["structure"].sections)

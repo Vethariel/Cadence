@@ -2,7 +2,7 @@ from cadence.schemas.song_state import SongState
 
 
 RHYTHM_LAYERS = {"drums", "bass", "pad", "fx_riser", "perc_aux"}
-MELODY_LAYERS = {"melody"}
+MELODY_LAYERS = {"melody", "countermelody"}
 RHYTHM_CHECKS = {"tracks_present", "drums_present", "timing_order", "velocity_range"}
 MELODY_CHECKS = {"melody_coverage", "melody_variety", "pitch_range"}
 

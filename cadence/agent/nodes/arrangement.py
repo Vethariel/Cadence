@@ -19,7 +19,7 @@ CORE_LAYERS = [
     LayerSpec(
         instrument_id="melody",
         active_sections=["*"],
-        pattern_strategy="generative_llm",
+        pattern_strategy="phrase_4bar",
         mix_level=-8.0,
         min_density=0.2,
     ),
@@ -80,6 +80,19 @@ def arrangement_planner_node(state: SongState) -> dict:
             pattern_strategy="one_shot",
             mix_level=-8.0,
             min_density=0.0,
+        ))
+
+    counter_sections = [
+        s for s in structure.sections
+        if (intent_map.get(s) and intent_map[s].density >= 0.55)
+    ]
+    if counter_sections:
+        layers.append(LayerSpec(
+            instrument_id="countermelody",
+            active_sections=counter_sections,
+            pattern_strategy="phrase_4bar",
+            mix_level=-10.0,
+            min_density=0.55,
         ))
 
     arrangement = ArrangementPlan(
