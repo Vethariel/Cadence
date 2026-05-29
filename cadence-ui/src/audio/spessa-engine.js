@@ -76,15 +76,16 @@ export function panToMidi(pan) {
   return Math.max(0, Math.min(127, Math.round((pan + 1) * 63.5)))
 }
 
-export function setupChannel(synth, channel, { program, isDrum, volumeDb, pan }) {
+export function setupChannel(synth, channel, { program, isDrum, volumeDb, pan, time = 0 }) {
   const ch = channel % 16
+  const opts = { time }
   if (isDrum) {
     synth.midiChannels[ch].setDrums(true)
   } else if (program != null) {
-    synth.programChange(ch, program)
+    synth.programChange(ch, program, opts)
   }
-  synth.controllerChange(ch, 7, dbToMidiVolume(volumeDb))
-  synth.controllerChange(ch, 10, panToMidi(pan))
+  synth.controllerChange(ch, 7, dbToMidiVolume(volumeDb), opts)
+  synth.controllerChange(ch, 10, panToMidi(pan), opts)
 }
 
 export function scheduleNote(synth, channel, pitch, velocity, time, durationSec) {

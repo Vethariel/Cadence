@@ -1,6 +1,11 @@
 import { useCadenceStore } from '../store'
 import { resolveGmProgram, resolveInstrumentId } from './gm-programs'
 import {
+  effectiveTrackVolumeDb,
+  effectiveVelocity,
+  sectionAtTimeMs,
+} from './section-gain'
+import {
   buildMasterBus,
   createSpessaSynth,
   destroySpessaSynth,
@@ -59,19 +64,29 @@ function findRsongTrack(rsong, instrumentId) {
 function scheduleRsongTrack(synthInstance, track, rsong, startTime) {
   const channel = resolveChannel(track)
   const instrumentId = track.instrument_id || track.id
-
-  setupChannel(synthInstance, channel, {
-    program: isDrumTrack(track) ? null : resolveGmProgram(instrumentId, track.role),
-    isDrum: isDrumTrack(track),
-    volumeDb: trackVolumeDb(track, rsong),
-    pan: trackPan(track),
-  })
+  let lastSection = null
 
   for (const event of track.events) {
     if (event.type === 'rest') continue
+
+    const section = event.section || 'drop'
     const t = startTime + event.t / 1000
+
+    if (section !== lastSection) {
+      setupChannel(synthInstance, channel, {
+        program: isDrumTrack(track) ? null : resolveGmProgram(instrumentId, track.role),
+        isDrum: isDrumTrack(track),
+        volumeDb: effectiveTrackVolumeDb(
+          track, rsong, section, trackVolumeDb(track, rsong),
+        ),
+        pan: trackPan(track),
+        time: t,
+      })
+      lastSection = section
+    }
+
     const dur = Math.max(0.04, event.duration_ms / 1000)
-    const vel = Math.max(1, Math.min(127, event.velocity))
+    const vel = effectiveVelocity(event.velocity, section, rsong)
     scheduleNote(synthInstance, channel, event.pitch, vel, t, dur)
   }
 }
@@ -89,23 +104,38 @@ function scheduleMidiTrack(synthInstance, track, rsong, startTime) {
   const channel = isDrum ? 9 : (track.channel ?? 0)
   const rsongTrack = findRsongTrack(rsong, instrumentId)
   const role = rsongTrack?.role ?? (isDrum ? 'rhythm' : 'lead')
+  const baseDb = rsongTrack
+    ? trackVolumeDb(rsongTrack, rsong)
+    : (isDrum ? DEFAULT_VOL.rhythm : DEFAULT_VOL.lead)
 
-  setupChannel(synthInstance, channel, {
-    program: isDrum ? null : resolveGmProgram(instrumentId, role),
-    isDrum,
-    volumeDb: rsongTrack
-      ? trackVolumeDb(rsongTrack, rsong)
-      : (isDrum ? DEFAULT_VOL.rhythm : DEFAULT_VOL.lead),
-    pan: trackPan({ instrument_id: instrumentId }),
-  })
+  let lastSection = null
 
   for (const note of track.notes) {
+    const section = sectionAtTimeMs(note.time * 1000, rsong)
+    const t = startTime + note.time
+
+    if (section !== lastSection) {
+      setupChannel(synthInstance, channel, {
+        program: isDrum ? null : resolveGmProgram(instrumentId, role),
+        isDrum,
+        volumeDb: effectiveTrackVolumeDb(
+          rsongTrack ?? { role, instrument_id: instrumentId },
+          rsong,
+          section,
+          baseDb,
+        ),
+        pan: trackPan({ instrument_id: instrumentId }),
+        time: t,
+      })
+      lastSection = section
+    }
+
     scheduleNote(
       synthInstance,
       channel,
       note.midi,
-      Math.max(1, Math.round(note.velocity * 127)),
-      startTime + note.time,
+      effectiveVelocity(Math.round(note.velocity * 127), section, rsong),
+      t,
       Math.max(0.04, note.duration),
     )
   }
