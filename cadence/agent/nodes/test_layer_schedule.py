@@ -25,6 +25,7 @@ from cadence.music.layer_schedule import (
     build_layer_schedule,
     filter_events_by_schedule,
     global_bar_from_ms,
+    section_start_bars,
 )
 
 
@@ -204,6 +205,53 @@ def test_schedule_reduces_active_layers_over_time():
     print("✓ test_schedule_reduces_active_layers_over_time OK")
 
 
+def test_staggered_layer_entry():
+    """Capas opcionales entran escalonadas, no todas en bar 0 de sección."""
+    state = _boss_fight_state()
+    arrangement = arrangement_planner_node(state)["arrangement"]
+    schedule = arrangement.layer_schedule
+
+    starts = section_start_bars(state["structure"])
+    build_start = starts["build-up"]
+    # build-up bar 4; countermelody stagger +2 → bar 6
+    counter_adds = [
+        e.bar for e in schedule.entries
+        if "countermelody" in e.add
+    ]
+    assert counter_adds, "countermelody debe programarse"
+    assert min(counter_adds) >= build_start + 2, (
+        f"countermelody debe entrar con stagger >=+2 (got {counter_adds})"
+    )
+
+    arp_adds = [e.bar for e in schedule.entries if "arp_synth" in e.add]
+    if arp_adds:
+        assert min(arp_adds) >= build_start + 4, (
+            f"arp_synth debe entrar con stagger >=+4 (got {arp_adds})"
+        )
+
+    stab_adds = [e.bar for e in schedule.entries if "chord_stab" in e.add]
+    assert stab_adds, "chord_stab debe programarse en secciones densas"
+    print(f"  counter adds @ {counter_adds}, arp @ {arp_adds}, stab @ {stab_adds}")
+    print("✓ test_staggered_layer_entry OK")
+
+
+def test_chord_stab_compose():
+    state = _boss_fight_state()
+    state["harmony"] = harmony_planner_node(state)["harmony"]
+    state["arrangement"] = arrangement_planner_node(state)["arrangement"]
+    stab_layer = next(
+        l for l in state["arrangement"].layers if l.instrument_id == "chord_stab"
+    )
+    ctx = build_compose_context(state, stab_layer)
+    track = compose_layer(ctx)
+    assert track is not None
+    assert track.id == "chord_stab"
+    assert len(track.events) > 0
+    assert all(e.duration_ms < 500 for e in track.events)
+    print(f"  chord_stab events: {len(track.events)}")
+    print("✓ test_chord_stab_compose OK")
+
+
 if __name__ == "__main__":
     test_registry_has_echo_synth()
     test_bars_per_chord_faster_under_tension()
@@ -212,4 +260,6 @@ if __name__ == "__main__":
     test_filter_events_by_schedule()
     test_echo_synth_from_melody()
     test_schedule_reduces_active_layers_over_time()
+    test_staggered_layer_entry()
+    test_chord_stab_compose()
     print("\n✓ All phase 5b tests passed")

@@ -27,6 +27,7 @@ const PAN = {
   drums: 0,
   perc_aux: 0.25,
   fx_riser: 0,
+  chord_stab: 0.15,
 }
 
 let timerId = null

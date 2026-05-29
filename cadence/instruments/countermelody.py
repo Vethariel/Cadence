@@ -48,7 +48,7 @@ def _compose_countermelody(ctx: ComposeContext) -> Track | None:
             continue
 
         density = intent.density if intent else 0.5
-        if density < 0.55:
+        if density < 0.45:
             current_t += bars * steps_per_bar * step_ms
             beat_index += bars * steps_per_bar
             continue

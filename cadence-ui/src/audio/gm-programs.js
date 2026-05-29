@@ -7,6 +7,7 @@ export const GM_PROGRAM = {
   bass: 38,          // Synth Bass 1
   pad: 89,           // Pad 2 (warm)
   fx_riser: 119,     // Reverse Cymbal
+  chord_stab: 62,    // Synth Brass 1
 }
 
 export const ROLE_PROGRAM = {
@@ -30,6 +31,7 @@ export const TRACK_NAME_TO_INSTRUMENT = {
   'Pad': 'pad',
   'Perc Aux': 'perc_aux',
   'FX Riser': 'fx_riser',
+  'Chord Stab': 'chord_stab',
 }
 
 export function resolveInstrumentId(trackOrName) {
@@ -47,6 +49,7 @@ export function resolveMidiVoiceId(trackName) {
   if (n.includes('counter')) return 'countermelody'
   if (n.includes('echo')) return 'echo_synth'
   if (n.includes('arp')) return 'arp_synth'
+  if (n.includes('stab') || n.includes('chord stab')) return 'chord_stab'
   if (n.includes('bass')) return 'bass'
   if (n.includes('pad')) return 'pad'
   if (n.includes('fx') || n.includes('riser')) return 'fx_riser'

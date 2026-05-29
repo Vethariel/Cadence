@@ -23,6 +23,7 @@ INSTRUMENT_PROGRAM: dict[str, int] = {
     "bass": 38,
     "pad": 89,
     "fx_riser": 119,
+    "chord_stab": 62,
 }
 
 # Fallback por rol si no hay instrument_id conocido
@@ -45,6 +46,7 @@ TRACK_DISPLAY_NAMES: dict[str, str] = {
     "pad": "Pad",
     "perc_aux": "Perc Aux",
     "fx_riser": "FX Riser",
+    "chord_stab": "Chord Stab",
 }
 
 

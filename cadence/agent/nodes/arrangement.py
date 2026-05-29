@@ -2,7 +2,14 @@
 
 from cadence.schemas.song_state import ArrangementPlan, LayerSpec, SongState
 from cadence.agent.nodes.narrative_apply import section_intent_map
-from cadence.music.layer_schedule import build_layer_schedule
+from cadence.music.layer_schedule import (
+    DENSITY_ARP,
+    DENSITY_CHORD_STAB,
+    DENSITY_COUNTER,
+    DENSITY_ECHO,
+    DENSITY_PERC,
+    build_layer_schedule,
+)
 
 CORE_LAYERS = [
     LayerSpec(
@@ -42,6 +49,7 @@ def arrangement_planner_node(state: SongState) -> dict:
     layers = list(CORE_LAYERS)
 
     pad_sections = []
+    chord_stab_sections = []
     perc_sections = []
     fx_sections = []
 
@@ -51,7 +59,9 @@ def arrangement_planner_node(state: SongState) -> dict:
 
         if density >= 0.25:
             pad_sections.append(section_id)
-        if density >= 0.55 and section_id in HIGH_ENERGY_SECTIONS:
+        if density >= DENSITY_CHORD_STAB:
+            chord_stab_sections.append(section_id)
+        if density >= DENSITY_PERC and section_id in HIGH_ENERGY_SECTIONS:
             perc_sections.append(section_id)
         if intent and intent.transition_out in FX_TRANSITIONS:
             fx_sections.append(section_id)
@@ -65,13 +75,22 @@ def arrangement_planner_node(state: SongState) -> dict:
             min_density=0.25,
         ))
 
+    if chord_stab_sections:
+        layers.append(LayerSpec(
+            instrument_id="chord_stab",
+            active_sections=chord_stab_sections,
+            pattern_strategy="loop_1bar",
+            mix_level=-11.0,
+            min_density=DENSITY_CHORD_STAB,
+        ))
+
     if perc_sections:
         layers.append(LayerSpec(
             instrument_id="perc_aux",
             active_sections=perc_sections,
             pattern_strategy="loop_1bar",
             mix_level=-12.0,
-            min_density=0.55,
+            min_density=DENSITY_PERC,
         ))
 
     if fx_sections:
@@ -85,7 +104,7 @@ def arrangement_planner_node(state: SongState) -> dict:
 
     counter_sections = [
         s for s in structure.sections
-        if (intent_map.get(s) and intent_map[s].density >= 0.55)
+        if (intent_map.get(s) and intent_map[s].density >= DENSITY_COUNTER)
     ]
     if counter_sections:
         layers.append(LayerSpec(
@@ -93,12 +112,12 @@ def arrangement_planner_node(state: SongState) -> dict:
             active_sections=counter_sections,
             pattern_strategy="phrase_4bar",
             mix_level=-10.0,
-            min_density=0.55,
+            min_density=DENSITY_COUNTER,
         ))
 
     echo_sections = [
         s for s in structure.sections
-        if (intent_map.get(s) and intent_map[s].density >= 0.65)
+        if (intent_map.get(s) and intent_map[s].density >= DENSITY_ECHO)
     ]
     if echo_sections:
         layers.append(LayerSpec(
@@ -106,12 +125,12 @@ def arrangement_planner_node(state: SongState) -> dict:
             active_sections=echo_sections,
             pattern_strategy="generative_llm",
             mix_level=-12.0,
-            min_density=0.65,
+            min_density=DENSITY_ECHO,
         ))
 
     arp_sections = [
         s for s in structure.sections
-        if (intent_map.get(s) and intent_map[s].density >= 0.7)
+        if (intent_map.get(s) and intent_map[s].density >= DENSITY_ARP)
     ]
     if arp_sections:
         layers.append(LayerSpec(
@@ -119,7 +138,7 @@ def arrangement_planner_node(state: SongState) -> dict:
             active_sections=arp_sections,
             pattern_strategy="loop_1bar",
             mix_level=-11.0,
-            min_density=0.7,
+            min_density=DENSITY_ARP,
         ))
 
     layer_ids = [l.instrument_id for l in layers]
