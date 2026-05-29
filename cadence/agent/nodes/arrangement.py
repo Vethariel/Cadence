@@ -2,6 +2,7 @@
 
 from cadence.schemas.song_state import ArrangementPlan, LayerSpec, SongState
 from cadence.agent.nodes.narrative_apply import section_intent_map
+from cadence.music.layer_schedule import build_layer_schedule
 
 CORE_LAYERS = [
     LayerSpec(
@@ -95,8 +96,43 @@ def arrangement_planner_node(state: SongState) -> dict:
             min_density=0.55,
         ))
 
+    echo_sections = [
+        s for s in structure.sections
+        if (intent_map.get(s) and intent_map[s].density >= 0.65)
+    ]
+    if echo_sections:
+        layers.append(LayerSpec(
+            instrument_id="echo_synth",
+            active_sections=echo_sections,
+            pattern_strategy="generative_llm",
+            mix_level=-12.0,
+            min_density=0.65,
+        ))
+
+    arp_sections = [
+        s for s in structure.sections
+        if (intent_map.get(s) and intent_map[s].density >= 0.7)
+    ]
+    if arp_sections:
+        layers.append(LayerSpec(
+            instrument_id="arp_synth",
+            active_sections=arp_sections,
+            pattern_strategy="loop_1bar",
+            mix_level=-11.0,
+            min_density=0.7,
+        ))
+
+    layer_ids = [l.instrument_id for l in layers]
+    schedule = build_layer_schedule(
+        structure,
+        layer_ids,
+        intent_map,
+        generation_seed=state.get("generation_seed", 0),
+    )
+
     arrangement = ArrangementPlan(
         layers=layers,
+        layer_schedule=schedule,
         required_layers=["drums", "bass", "melody"],
     )
 

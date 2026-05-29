@@ -140,6 +140,19 @@ def _build_rsong(state: SongState) -> dict:
                     "arrangement": {
                         "required_layers": arrangement.required_layers,
                         "layers": [l.model_dump() for l in arrangement.layers],
+                        **(
+                            {
+                                "layer_schedule": {
+                                    "core_layers": arrangement.layer_schedule.core_layers,
+                                    "entries": [
+                                        e.model_dump()
+                                        for e in arrangement.layer_schedule.entries
+                                    ],
+                                }
+                            }
+                            if arrangement.layer_schedule
+                            else {}
+                        ),
                     }
                 }
                 if arrangement

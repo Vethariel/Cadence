@@ -102,6 +102,25 @@ def progression_for_role(
     return templates[base]
 
 
+def _bars_per_chord(
+    harmonic_tension: float,
+    narrative_role: str,
+    default: int = 4,
+) -> int:
+    """Ritmo armónico más rápido bajo tensión (1–2 compases por acorde)."""
+    if narrative_role in ("reflection", "silence"):
+        return default
+    if narrative_role == "climax" and harmonic_tension >= 0.6:
+        return 1
+    if harmonic_tension >= 0.8:
+        return 1
+    if harmonic_tension >= 0.5:
+        return 2
+    if harmonic_tension >= 0.35:
+        return 2
+    return default
+
+
 def build_section_harmony(
     section_id: str,
     narrative_role: str,
@@ -131,9 +150,7 @@ def build_harmony_plan(
         intent = narrative_sections.get(section_id) if narrative_sections else None
         role = intent.narrative_role if intent else "establish"
         tension = intent.harmonic_tension if intent else 0.4
-        bars_per_chord = 2 if tension >= 0.65 else bars_per_chord_default
-        if role in ("climax", "reflection", "silence"):
-            bars_per_chord = bars_per_chord_default
+        bars_per_chord = _bars_per_chord(tension, role, bars_per_chord_default)
 
         section_harmonies.append(build_section_harmony(
             section_id=section_id,

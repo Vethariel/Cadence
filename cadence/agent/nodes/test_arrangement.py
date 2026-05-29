@@ -76,7 +76,7 @@ def _boss_fight_state():
 
 def test_registry_has_core_instruments():
     ids = list_instruments()
-    for required in ("drums", "bass", "melody", "pad", "fx_riser", "perc_aux", "countermelody"):
+    for required in ("drums", "bass", "melody", "pad", "fx_riser", "perc_aux", "countermelody", "echo_synth", "arp_synth"):
         assert required in ids, f"{required} no registrado"
     assert get_instrument("drums").requires_llm is False
     assert get_instrument("melody").requires_llm is True
@@ -92,6 +92,9 @@ def test_arrangement_planner_adds_optional_layers():
     assert "pad" in layer_ids
     assert "perc_aux" in layer_ids
     assert "fx_riser" in layer_ids
+    assert "echo_synth" in layer_ids
+    assert arrangement.layer_schedule is not None
+    assert len(arrangement.layer_schedule.entries) > 0
     assert arrangement.required_layers == ["drums", "bass", "melody"]
     print(f"  layers: {layer_ids}")
     print("✓ test_arrangement_planner_adds_optional_layers OK")

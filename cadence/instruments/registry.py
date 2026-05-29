@@ -38,10 +38,25 @@ def list_instruments() -> list[str]:
 
 
 def compose_layer(ctx: ComposeContext) -> Track | None:
+    from cadence.music.layer_schedule import filter_events_by_schedule
+
     defn = get_instrument(ctx.layer.instrument_id)
     track = defn.compose(ctx)
     if track is None:
         return None
     if not track.instrument_id:
         track = track.model_copy(update={"instrument_id": defn.instrument_id})
+    arrangement = ctx.state.get("arrangement")
+    if arrangement and arrangement.layer_schedule and track.events:
+        available = {l.instrument_id for l in arrangement.layers}
+        filtered = filter_events_by_schedule(
+            track.events,
+            track.instrument_id,
+            arrangement.layer_schedule,
+            ctx.bpm,
+            available,
+        )
+        if not filtered:
+            return None
+        track = track.model_copy(update={"events": filtered})
     return track

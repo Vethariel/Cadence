@@ -101,9 +101,26 @@ class LayerSpec(BaseModel):
         description="Densidad narrativa mínima para activar la capa en una sección.",
     )
 
+class LayerScheduleEntry(BaseModel):
+    """Cambio de capas activas en un compás global."""
+    bar: int = Field(ge=0, description="Compás global 0-based donde aplica el cambio.")
+    add: list[str] = Field(default_factory=list)
+    remove: list[str] = Field(default_factory=list)
+
+
+class LayerSchedule(BaseModel):
+    """Programación bar-a-bar de qué capas suenan (estilo Pizza Time)."""
+    entries: list[LayerScheduleEntry] = Field(default_factory=list)
+    core_layers: list[str] = Field(
+        default_factory=lambda: ["drums", "bass", "melody"],
+        description="Capas siempre activas salvo remove explícito.",
+    )
+
+
 class ArrangementPlan(BaseModel):
     """Plan de orquestación — qué instrumentos entran y con qué estrategia."""
     layers: list[LayerSpec]
+    layer_schedule: LayerSchedule | None = None
     required_layers: list[str] = Field(
         default_factory=lambda: ["drums", "bass", "melody"],
         description="Capas obligatorias para pasar validación.",
