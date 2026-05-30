@@ -276,19 +276,28 @@ def select_strategies(
     mode: str = "minor",
     use_case: str = "game",
     energy_level: int = 3,
+    *,
+    composition_archetype: str | None = None,
 ) -> GenerationStrategies:
     """Elige una estrategia de cada pool usando generation_seed y sesgo de repertorio."""
-    drum_candidates = drum_pool_priority(energy_level, use_case)
+    arch = composition_archetype
+    drum_candidates = drum_pool_priority(
+        energy_level, use_case, composition_archetype=arch,
+    )
     drum_pattern = drum_candidates[generation_seed % len(drum_candidates)]
 
-    layer_bias = layer_pattern_bias(energy_level, use_case, generation_seed)
+    layer_bias = layer_pattern_bias(
+        energy_level, use_case, generation_seed, composition_archetype=arch,
+    )
     bass_candidates = layer_bias.get("bass_candidates")
     if isinstance(bass_candidates, list):
         bass_pattern = _pick_biased(bass_candidates, tuple(BASS_POOL), generation_seed, 7)
     else:
         bass_pattern = BASS_POOL[(generation_seed // 7) % len(BASS_POOL)]
 
-    harmony_candidates = harmony_pool_priority(energy_level, use_case)
+    harmony_candidates = harmony_pool_priority(
+        energy_level, use_case, composition_archetype=arch,
+    )
     harmony_pool = harmony_candidates[(generation_seed // 13) % len(harmony_candidates)]
 
     arp_cands = layer_bias.get("arp_candidates")

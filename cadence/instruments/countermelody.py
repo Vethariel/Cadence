@@ -2,7 +2,9 @@
 
 from cadence.instruments.context import ComposeContext
 from cadence.instruments.registry import InstrumentDefinition, register
-from cadence.agent.nodes.narrative_apply import section_intent_map, melody_should_play
+from cadence.agent.nodes.narrative_apply import melody_should_play
+from cadence.music.narrative_contract import section_intent_map_from_state
+from cadence.music.seed_policy import seed_for_state
 from cadence.music.development_theory import section_development_map
 from cadence.music.harmony_theory import chord_at_bar, chord_tones_as_degrees, section_harmony_map
 from cadence.music.instrument_patterns import counter_steps
@@ -15,14 +17,13 @@ def _ms_per_step(bpm: int) -> float:
 
 def _compose_countermelody(ctx: ComposeContext) -> Track | None:
     structure = ctx.state["structure"]
-    narrative = ctx.state.get("narrative")
     development = ctx.state.get("development")
     harmony = ctx.state.get("harmony")
 
     if not development:
         return None
 
-    intent_map = section_intent_map(narrative)
+    intent_map = section_intent_map_from_state(ctx.state, context="countermelody")
     dev_map = section_development_map(development)
     harmony_map = section_harmony_map(harmony)
     active = set(ctx.active_sections())
@@ -31,7 +32,7 @@ def _compose_countermelody(ctx: ComposeContext) -> Track | None:
     scale_pitches = _get_scale_pitches(ctx.key, ctx.mode)
 
     strategies = ctx.state.get("strategies")
-    seed = ctx.state.get("generation_seed", 0)
+    seed = seed_for_state(ctx.state, "countermelody") or ctx.state.get("generation_seed", 0)
     counter_pattern = strategies.counter_pattern if strategies else None
     step_pattern = counter_steps(counter_pattern, seed)
 

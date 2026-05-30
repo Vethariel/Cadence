@@ -74,7 +74,8 @@ def test_development_planner_varies_by_role():
     state.update(strategy_planner_node(state))
     result = development_planner_node(state)
     dev = result["development"]
-    assert dev.generation_seed == state["generation_seed"] > 0
+    assert dev.generation_seed == state["generation_seed"]
+    assert state["generation_seed"] > 0
     by_id = {s.section_id: s for s in dev.sections}
     assert by_id["intro"].transform == "introduce"
     assert by_id["drop"].transform == "climax"

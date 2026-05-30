@@ -333,9 +333,20 @@ def validate_orchestration(
     generation_seed: int = 0,
     style_profile: MusicalStyleProfile | None = None,
     strategies: object | None = None,
+    raw_prompt: str = "",
+    creative_variation: object | None = None,
+    composition_archetype: str | None = None,
 ) -> OrchestrationPlan:
     """Corrige IDs, timbres GM, ritmo y presupuesto; garantiza núcleo drums/bass/melody."""
+    from cadence.music.style_archetype import infer_composition_archetype
     from cadence.schemas.song_state import GenerationStrategies
+
+    archetype = composition_archetype or infer_composition_archetype(
+        style_profile=style_profile,
+        raw_prompt=raw_prompt,
+        use_case=use_case,
+        energy_level=energy_level,
+    )
 
     plan = enrich_orchestration_from_strategies(
         plan,
@@ -344,13 +355,24 @@ def validate_orchestration(
         use_case=use_case,
         generation_seed=generation_seed,
         style_profile=style_profile,
+        raw_prompt=raw_prompt,
+        composition_archetype=archetype,
     )
+    from cadence.schemas.song_state import CreativeVariationBounds
 
-    max_optional, max_lead = max_optional_budget(use_case, energy_level)
+    max_optional, max_lead = max_optional_budget(
+        use_case, energy_level, composition_archetype=archetype,
+    )
+    allowed_pool: set[str] | None = None
+    if isinstance(creative_variation, CreativeVariationBounds):
+        max_optional = min(max_optional, creative_variation.max_optional_layers)
+        max_lead = min(max_lead, creative_variation.max_lead_optionals)
+        allowed_pool = set(creative_variation.allowed_optional_layers)
     protected = instruments_implied_by_strategies(
         strategies if isinstance(strategies, GenerationStrategies) else None,
         energy_level=energy_level,
         use_case=use_case,
+        composition_archetype=archetype,
     )
 
     known = set(list_instruments())
@@ -404,10 +426,15 @@ def validate_orchestration(
         energy_level=energy_level,
         use_case=use_case,
         protected=protected,
+        composition_archetype=archetype,
     )
     for iid in list(by_id.keys()):
         if iid not in CORE_INSTRUMENTS and iid not in allowed_ids:
             del by_id[iid]
+    if allowed_pool:
+        for iid in list(by_id.keys()):
+            if iid not in CORE_INSTRUMENTS and iid not in allowed_pool:
+                del by_id[iid]
 
     lead_present = [iid for iid in LEAD_OPTIONALS if iid in by_id]
     if len(lead_present) > max_lead:

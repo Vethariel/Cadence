@@ -3,6 +3,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from cadence.config import settings
+from cadence.music.seed_policy import node_temperature
+from cadence.music.narrative_contract import _normalize_section_id
 from cadence.schemas.song_state import SongState, SongStructure
 
 
@@ -67,6 +69,21 @@ def _build_context(state: SongState) -> str:
     )
 
 
+def _build_contract_context(state: SongState) -> str:
+    contract = state.get("narrative_contract")
+    if not contract:
+        return ""
+    return (
+        "=== CONTRATO NARRATIVO (INMUTABLE) ===\n"
+        f"section_ids (orden fijo): {', '.join(contract.section_ids)}\n"
+        f"arc_type: {contract.arc_type}\n"
+        f"global_motif: {contract.global_motif}\n"
+        f"prompt_intent_signature: {contract.prompt_intent_signature}\n"
+        "NO renombres, NO omitas ni reordenes secciones respecto al contrato.\n"
+        "Solo ajusta compases (bars_per_section) y duración total.\n"
+    )
+
+
 def _build_narrative_context(state: SongState) -> str:
     narrative = state.get("narrative")
     if not narrative:
@@ -106,21 +123,26 @@ def structure_planner_node(state: SongState) -> dict:
     por sección y duración estimada.
     """
 
+    contract = state.get("narrative_contract")
+    if not contract:
+        raise ValueError("structure_planner requiere narrative_contract en el estado")
+
     context = _build_context(state)
+    contract_ctx = _build_contract_context(state)
     narrative_ctx = _build_narrative_context(state)
 
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
         google_api_key=settings.google_api_key,
-        temperature=0.3,
+        temperature=node_temperature("structure_planner"),
     ).with_structured_output(StructurePlannerOutput)
 
     system = SystemMessage(content=(
         "Eres un compositor experto en estructura musical para videojuegos y animaciones. "
-        "Tu tarea es definir la macro-estructura de una canción: qué secciones tiene, "
-        "cuántos compases dura cada una, y el total. "
-        "Asegúrate de que bars_per_section contenga exactamente las mismas secciones "
-        "que el array sections, sin agregar ni omitir ninguna. "
+        "Tu tarea es definir la macro-estructura formal: compases por sección y duración. "
+        "El CONTRATO NARRATIVO fija los section_ids y su orden — debes usarlos tal cual. "
+        "Asegúrate de que sections y bars_per_section usen EXACTAMENTE esos IDs, "
+        "sin agregar ni omitir ninguna. "
         "Calcula estimated_duration_ms así: "
         "(total_bars * beats_per_bar * 60000) / BPM. "
         "Si hay guion narrativo, respeta density y narrative_role al decidir "
@@ -130,18 +152,39 @@ def structure_planner_node(state: SongState) -> dict:
 
     human = HumanMessage(content=(
         f"{context}\n\n"
+        f"{contract_ctx}\n"
         f"{narrative_ctx}\n"
-        "Define la estructura completa de la canción. "
-        "Cada sección debe tener un número de compases apropiado para su rol dramático."
+        "Define compases por sección según density y narrative_role. "
+        "sections DEBE ser la lista exacta del contrato en el mismo orden."
     ))
 
     result: StructurePlannerOutput = llm.invoke([system, human])
 
+    canonical = list(contract.section_ids)
+    bars = dict(result.bars_per_section)
+    remapped_bars: dict[str, int] = {}
+    for cid in canonical:
+        if cid in bars:
+            remapped_bars[cid] = bars[cid]
+        else:
+            for key, val in bars.items():
+                if _normalize_section_id(key) == _normalize_section_id(cid):
+                    remapped_bars[cid] = val
+                    break
+            if cid not in remapped_bars:
+                remapped_bars[cid] = 8
+
+    total_bars = sum(remapped_bars.values())
+    proposal = state.get("technical_proposal")
+    bpm = proposal.bpm if proposal else 120
+    beats_per_bar = proposal.time_signature[0] if proposal else 4
+    duration_ms = int((total_bars * beats_per_bar * 60000) / max(bpm, 1))
+
     structure = SongStructure(
-        sections=result.sections,
-        bars_per_section=result.bars_per_section,
-        total_bars=result.total_bars,
-        estimated_duration_ms=result.estimated_duration_ms,
+        sections=canonical,
+        bars_per_section=remapped_bars,
+        total_bars=total_bars,
+        estimated_duration_ms=result.estimated_duration_ms or duration_ms,
     )
 
     return {"structure": structure}

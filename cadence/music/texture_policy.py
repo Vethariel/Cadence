@@ -28,13 +28,24 @@ def infer_texture_mode(
     energy_level: int,
     narrative_sections: dict[str, SectionIntent] | None = None,
     active_optional_count: int = 0,
+    composition_archetype: str | None = None,
 ) -> TextureMode:
     uc = (use_case or "game").lower()
+    arch = composition_archetype or ""
     roles = []
     max_density = 0.0
     if narrative_sections:
         roles = [s.narrative_role for s in narrative_sections.values()]
         max_density = max((s.density for s in narrative_sections.values()), default=0.5)
+
+    if arch in ("ambient_loop", "cinematic_cutscene"):
+        return "bedded"
+    if arch == "compact_action":
+        return "compact"
+    if arch == "chiptune_dance" and energy_level >= 4:
+        return "simultaneous"
+    if arch == "orchestral_boss" and energy_level >= 4:
+        return "simultaneous"
 
     if uc in ("loop", "cutscene"):
         return "bedded"
@@ -114,7 +125,7 @@ def segment_layer_delta(
                 remove.append(lid)
     elif dense_like and texture_mode in ("simultaneous", "staggered", "compact"):
         order = ("arp_synth", "countermelody", "chord_stab", "echo_synth", "synth_pluck", "perc_aux")
-        cap = 3 if texture_mode == "simultaneous" else 2
+        cap = 3 if texture_mode == "simultaneous" else (1 if texture_mode == "compact" else 2)
         for lid in order:
             if lid in available and len([x for x in add if x in LEAD_SUPPORTS]) < cap:
                 add.append(lid)

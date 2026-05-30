@@ -4,6 +4,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from cadence.config import settings
+from cadence.music.seed_policy import node_temperature, seed_for_state
 from cadence.music.instrument_catalog import (
     get_timbres,
     resolve_timbre,
@@ -73,7 +74,7 @@ def style_coherence_node(state: SongState) -> dict:
     profile = state.get("style_profile")
     plan = state.get("orchestration_plan")
     proposal = state.get("technical_proposal")
-    seed = state.get("generation_seed", 0)
+    seed = seed_for_state(state, "style_coherence") or state.get("generation_seed", 0)
 
     if not plan:
         return {
@@ -86,7 +87,7 @@ def style_coherence_node(state: SongState) -> dict:
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
         google_api_key=settings.google_api_key,
-        temperature=0.2,
+        temperature=node_temperature("style_coherence"),
     ).with_structured_output(StyleCoherenceVerdict)
 
     timbre_lines = []
@@ -131,6 +132,8 @@ def style_coherence_node(state: SongState) -> dict:
         genre_tags=[],
         generation_seed=seed,
         style_profile=profile,
+        raw_prompt=intent.raw_prompt,
+        creative_variation=state.get("creative_variation"),
     )
 
     return {

@@ -12,6 +12,7 @@ from cadence.schemas.song_state import (
 from cadence.agent.nodes.strategy import strategy_planner_node
 from cadence.agent.nodes.harmony import harmony_planner_node
 from cadence.agent.nodes.rhythm import _generate_drum_track, _generate_bass_track
+from cadence.music.narrative_contract import contract_section_intent_map
 from cadence.music.strategy_pools import (
     compute_generation_seed,
     select_strategies,
@@ -120,16 +121,17 @@ def test_drum_patterns_differ_by_strategy():
     state.update(strategy_planner_node(state))
     s_techno = state["strategies"].model_copy(update={"drum_pattern": "techno"})
     s_break = state["strategies"].model_copy(update={"drum_pattern": "breakbeat"})
+    intent_map = contract_section_intent_map(state["narrative"], None)
     d1 = _generate_drum_track(
         state["structure"].sections,
         state["structure"].bars_per_section,
-        140, ["techno"], state["narrative"],
+        140, ["techno"], intent_map,
         drum_pattern_id=s_techno.drum_pattern,
     )
     d2 = _generate_drum_track(
         state["structure"].sections,
         state["structure"].bars_per_section,
-        140, ["techno"], state["narrative"],
+        140, ["techno"], intent_map,
         drum_pattern_id=s_break.drum_pattern,
     )
     assert len(d1.events) != len(d2.events) or d1.events[0].t != d2.events[0].t
@@ -140,16 +142,17 @@ def test_bass_patterns_differ_by_strategy():
     state = _mock_state()
     state.update(strategy_planner_node(state))
     state.update(harmony_planner_node(state))
+    intent_map = contract_section_intent_map(state["narrative"], None)
     b1 = _generate_bass_track(
         state["structure"].sections,
         state["structure"].bars_per_section,
-        140, "F", "minor", state["narrative"], state["harmony"],
+        140, "F", "minor", intent_map, state["harmony"],
         bass_pattern_id="root_fifth",
     )
     b2 = _generate_bass_track(
         state["structure"].sections,
         state["structure"].bars_per_section,
-        140, "F", "minor", state["narrative"], state["harmony"],
+        140, "F", "minor", intent_map, state["harmony"],
         bass_pattern_id="pulse",
     )
     assert len(b1.events) > len(b2.events)

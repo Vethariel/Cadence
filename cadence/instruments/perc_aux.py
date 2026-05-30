@@ -2,7 +2,8 @@
 
 from cadence.instruments.context import ComposeContext
 from cadence.instruments.registry import InstrumentDefinition, register
-from cadence.agent.nodes.narrative_apply import section_intent_map
+from cadence.music.narrative_contract import section_intent_map_from_state
+from cadence.music.seed_policy import seed_for_state
 from cadence.music.instrument_patterns import perc_clap_steps, perc_use_shaker
 from cadence.schemas.song_state import RhythmEvent, Track
 
@@ -16,11 +17,10 @@ def _ms_per_step(bpm: int) -> float:
 
 def _compose_perc_aux(ctx: ComposeContext) -> Track | None:
     structure = ctx.state["structure"]
-    narrative = ctx.state.get("narrative")
-    intent_map = section_intent_map(narrative)
+    intent_map = section_intent_map_from_state(ctx.state, context="perc_aux")
     active = set(ctx.active_sections())
     strategies = ctx.state.get("strategies")
-    seed = ctx.state.get("generation_seed", 0)
+    seed = seed_for_state(ctx.state, "perc_aux") or ctx.state.get("generation_seed", 0)
     perc_pattern = strategies.perc_pattern if strategies else None
     clap_steps = perc_clap_steps(perc_pattern, seed)
 

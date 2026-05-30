@@ -158,9 +158,23 @@ def melody_should_play(intent: SectionIntent | None) -> bool:
     return intent.density >= 0.2
 
 
-def melody_rest_ratio(intent: SectionIntent | None, *, use_case: str = "game") -> float:
+def melody_rest_ratio(
+    intent: SectionIntent | None,
+    *,
+    use_case: str = "game",
+    composition_archetype: str | None = None,
+) -> float:
     """Proporción sugerida de silencios en el patrón melódico."""
     uc = (use_case or "game").lower()
+    arch = composition_archetype or ""
+    if arch == "chiptune_dance":
+        if intent and intent.narrative_role in ("climax", "tension"):
+            return 0.02
+        return 0.06
+    if arch == "compact_action":
+        if intent and intent.narrative_role in ("climax", "tension"):
+            return 0.06
+        return 0.10
     if intent is None:
         return 0.15 if uc in ("loop", "cutscene") else 0.1
     if uc in ("loop", "cutscene"):

@@ -339,6 +339,7 @@ def build_development_plan(
     *,
     bars_per_section: dict[str, int] | None = None,
     use_case: str = "game",
+    composition_archetype: str | None = None,
 ) -> DevelopmentPlan:
     motif = global_motif or DEFAULT_MOTIF
     bars_map = bars_per_section or {}
@@ -360,6 +361,7 @@ def build_development_plan(
         use_case=use_case,
         energy_level=energy_level,
         narrative_sections=narrative_sections,
+        composition_archetype=composition_archetype,
     )
 
     return DevelopmentPlan(

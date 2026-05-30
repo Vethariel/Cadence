@@ -1,4 +1,16 @@
-from cadence.schemas.song_state import SongState, ValidationResult, Track, ArrangementPlan
+from cadence.schemas.song_state import (
+    SongState,
+    ValidationResult,
+    Track,
+    ArrangementPlan,
+    NarrativeContract,
+    NarrativeAnchors,
+)
+from cadence.music.narrative_validation import (
+    check_global_motif_continuity,
+    check_narrative_intensity_direction,
+    check_narrative_key_section_coverage,
+)
 from cadence.music.track_metrics import (
     layers_active_stats,
     melody_leap_ratio,
@@ -85,7 +97,13 @@ def _check_timing_order(tracks: list[Track]) -> tuple[bool, str]:
             return False, f"Track '{track.id}': eventos fuera de orden cronológico"
     return True, ""
 
-def _check_drums_present(tracks: list[Track], sections: list[str]) -> tuple[bool, str]:
+def _check_drums_present(
+    tracks: list[Track],
+    sections: list[str],
+    arrangement: ArrangementPlan | None = None,
+) -> tuple[bool, str]:
+    if arrangement and "drums" not in arrangement.required_layers:
+        return True, ""
     drums = next((t for t in tracks if t.id == "drums"), None)
     if not drums or not drums.events:
         return False, "Track de drums vacío"
@@ -226,12 +244,22 @@ def _check_instrumental_richness(
     bpm: int,
     energy_level: int,
     use_case: str,
+    composition_archetype: str | None = None,
 ) -> tuple[bool, str]:
     """Capas simultáneas y variación de densidad — relevante en game/energy alta."""
-    if not _is_high_energy_game(energy_level, use_case):
+    arch = composition_archetype or ""
+    layers_mean, layers_max = layers_active_stats(tracks, bpm)
+
+    if arch == "compact_action":
+        if layers_mean > 4.2:
+            return False, (
+                f"Stack demasiado denso para arquetipo compacto: μ={layers_mean:.1f} capas "
+                "(máx ~4.2)."
+            )
         return True, ""
 
-    layers_mean, layers_max = layers_active_stats(tracks, bpm)
+    if not _is_high_energy_game(energy_level, use_case):
+        return True, ""
     density_stdev = notes_per_bar_stdev(tracks, bpm)
     min_mean = 3.0 if energy_level == 4 else 3.5
     min_stdev = 8.0 if energy_level == 4 else 10.0
@@ -253,16 +281,70 @@ def _check_melody_leaps(
     tracks: list[Track],
     energy_level: int,
     use_case: str,
+    composition_archetype: str | None = None,
 ) -> tuple[bool, str]:
     """Melodías de alta energía necesitan saltos amplios (estilo dance/arcade)."""
-    if energy_level < 5 or (use_case or "game").lower() not in ("game", "animation"):
+    arch = composition_archetype or ""
+    if arch not in ("chiptune_dance", "default_game") and energy_level < 5:
         return True, ""
+    if energy_level < 5 or (use_case or "game").lower() not in ("game", "animation"):
+        if arch != "chiptune_dance":
+            return True, ""
 
     ratio = melody_leap_ratio(tracks)
-    if ratio < 0.30:
+    min_ratio = 0.30 if arch == "chiptune_dance" else 0.25
+    if ratio < min_ratio:
         return False, (
             f"Melodía demasiado conjunta: solo {ratio:.0%} de intervalos >4 semitonos "
-            "(se espera ≥30% en energy 5)."
+            f"(se espera ≥{min_ratio:.0%} para {arch or 'energy 5'})."
+        )
+    return True, ""
+
+
+def _check_melody_rest_density(
+    tracks: list[Track],
+    bpm: int,
+    composition_archetype: str | None = None,
+) -> tuple[bool, str]:
+    """Chiptune/dance: penaliza melodías con demasiados silencios entre notas."""
+    if composition_archetype != "chiptune_dance":
+        return True, ""
+
+    melody = next((t for t in tracks if t.id == "melody"), None)
+    if not melody or len(melody.events) < 4:
+        return True, ""
+
+    sorted_ev = sorted(melody.events, key=lambda e: e.t)
+    gaps = []
+    for i in range(1, len(sorted_ev)):
+        gap = sorted_ev[i].t - (sorted_ev[i - 1].t + sorted_ev[i - 1].duration_ms)
+        if gap > 0:
+            gaps.append(gap)
+    if not gaps:
+        return True, ""
+    bar_ms = (60000 / max(bpm, 1)) * 4
+    long_gaps = sum(1 for g in gaps if g >= bar_ms * 0.12)
+    rest_ratio = long_gaps / len(gaps)
+    if rest_ratio > 0.35:
+        return False, (
+            f"Melodía chiptune con demasiados silencios ({rest_ratio:.0%} huecos largos; máx 35%)."
+        )
+    return True, ""
+
+
+def _check_orchestral_simultaneity(
+    tracks: list[Track],
+    bpm: int,
+    energy_level: int,
+    composition_archetype: str | None = None,
+) -> tuple[bool, str]:
+    if composition_archetype != "orchestral_boss" or energy_level < 5:
+        return True, ""
+
+    _, layers_max = layers_active_stats(tracks, bpm)
+    if layers_max < 5:
+        return False, (
+            f"Boss orquestal: pocas capas simultáneas (máx {layers_max}; se espera ≥5)."
         )
     return True, ""
 
@@ -291,6 +373,48 @@ def _check_planned_optional_layers(
     return True, ""
 
 
+def _check_narrative_key_coverage(
+    tracks: list[Track],
+    structure,
+    contract: NarrativeContract | None,
+    anchors: NarrativeAnchors | None,
+    intent_map: dict | None,
+) -> tuple[bool, str]:
+    if not intent_map:
+        return True, ""
+    return check_narrative_key_section_coverage(
+        tracks, structure, contract, anchors, intent_map,
+    )
+
+
+def _check_narrative_intensity_direction(
+    tracks: list[Track],
+    sections: list[str],
+    intent_map: dict | None,
+    contract: NarrativeContract | None,
+) -> tuple[bool, str]:
+    if not intent_map:
+        return True, ""
+    return check_narrative_intensity_direction(
+        tracks, sections, intent_map, contract,
+    )
+
+
+def _check_narrative_motif_continuity(
+    tracks: list[Track],
+    contract: NarrativeContract | None,
+    anchors: NarrativeAnchors | None,
+    intent_map: dict | None,
+    key: str,
+    mode: str,
+) -> tuple[bool, str]:
+    if not intent_map:
+        return True, ""
+    return check_global_motif_continuity(
+        tracks, contract, anchors, intent_map, key=key, mode=mode,
+    )
+
+
 # Checks con su peso en el score final
 CHECKS = [
     (_check_all_tracks_present,  0.20, "tracks_present"),
@@ -306,6 +430,11 @@ CHECKS = [
     (_check_instrumental_richness, 0.04, "instrumental_richness"),
     (_check_melody_leaps,        0.03, "melody_leaps"),
     (_check_planned_optional_layers, 0.03, "planned_layers"),
+    (_check_melody_rest_density, 0.03, "melody_rest_density"),
+    (_check_orchestral_simultaneity, 0.03, "orchestral_layers"),
+    (_check_narrative_key_coverage, 0.03, "narrative_key_coverage"),
+    (_check_narrative_intensity_direction, 0.03, "narrative_intensity"),
+    (_check_narrative_motif_continuity, 0.03, "narrative_motif"),
 ]
 
 def validator_node(state: SongState) -> dict:
@@ -322,8 +451,24 @@ def validator_node(state: SongState) -> dict:
     energy = proposal.energy_level if proposal else 3
     use_case = state["intent"].use_case
 
-    from cadence.agent.nodes.narrative_apply import section_intent_map
-    intent_map = section_intent_map(narrative)
+    from cadence.music.narrative_contract import contract_section_intent_map
+    from cadence.music.section_refs import canonical_section_ids
+    from cadence.music.style_archetype import get_composition_archetype
+
+    contract = state.get("narrative_contract")
+    anchors = state.get("narrative_anchors")
+    intent_map = contract_section_intent_map(
+        narrative, contract, context="validator", state=state,
+    )
+    archetype = get_composition_archetype(state)
+    key = proposal.key if proposal else "C"
+    mode = proposal.mode if proposal else "minor"
+    canonical = canonical_section_ids(state)
+    if structure and canonical and structure.sections != canonical:
+        raise AssertionError(
+            f"validator: structure.sections {structure.sections!r} != "
+            f"canónicas {canonical!r}",
+        )
 
     errors = []
     warnings = []
@@ -339,7 +484,7 @@ def validator_node(state: SongState) -> dict:
                 structure.sections,
             )
         elif check_fn == _check_drums_present:
-            passed, msg = check_fn(tracks, structure.sections)
+            passed, msg = check_fn(tracks, structure.sections, arrangement)
         elif check_fn == _check_melody_loop:
             passed, msg = check_fn(tracks, bpm)
         elif check_fn == _check_dynamic_range:
@@ -347,12 +492,26 @@ def validator_node(state: SongState) -> dict:
         elif check_fn == _check_intensity_arc:
             passed, msg = check_fn(tracks, structure.sections, intent_map)
         elif check_fn == _check_instrumental_richness:
-            passed, msg = check_fn(tracks, bpm, energy, use_case)
+            passed, msg = check_fn(tracks, bpm, energy, use_case, archetype)
         elif check_fn == _check_melody_leaps:
-            passed, msg = check_fn(tracks, energy, use_case)
+            passed, msg = check_fn(tracks, energy, use_case, archetype)
+        elif check_fn == _check_melody_rest_density:
+            passed, msg = check_fn(tracks, bpm, archetype)
+        elif check_fn == _check_orchestral_simultaneity:
+            passed, msg = check_fn(tracks, bpm, energy, archetype)
         elif check_fn == _check_planned_optional_layers:
             passed, msg = check_fn(
                 tracks, arrangement, structure.estimated_duration_ms,
+            )
+        elif check_fn == _check_narrative_key_coverage:
+            passed, msg = check_fn(
+                tracks, structure, contract, anchors, intent_map,
+            )
+        elif check_fn == _check_narrative_intensity_direction:
+            passed, msg = check_fn(tracks, structure.sections, intent_map, contract)
+        elif check_fn == _check_narrative_motif_continuity:
+            passed, msg = check_fn(
+                tracks, contract, anchors, intent_map, key, mode,
             )
         else:
             passed, msg = check_fn(tracks)

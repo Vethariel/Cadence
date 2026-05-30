@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 from cadence.config import settings
+from cadence.music.seed_policy import node_temperature
 from cadence.schemas.song_state import SongState, UserIntent
 
 
@@ -46,7 +47,7 @@ def music_knowledge_router(state: SongState) -> dict:
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
         google_api_key=settings.google_api_key,
-        temperature=0.2,
+        temperature=node_temperature("router"),
     ).with_structured_output(RouterOutput)
 
     system = SystemMessage(content=(

@@ -10,6 +10,12 @@ def compose_orchestra_node(state: SongState) -> dict:
     """
     import cadence.instruments  # noqa: F401 — registra instrumentos
     from cadence.instruments import build_compose_context, compose_layer, get_instrument
+    from cadence.music.narrative_contract import assert_sections_match_contract
+
+    structure = state.get("structure")
+    contract = state.get("narrative_contract")
+    if structure and contract:
+        assert_sections_match_contract(structure, contract, context="compose_orchestra")
 
     arrangement = state.get("arrangement")
     if not arrangement:

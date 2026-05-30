@@ -2,7 +2,7 @@
 
 from cadence.schemas.song_state import SongState
 from cadence.music.harmony_theory import build_harmony_plan
-from cadence.agent.nodes.narrative_apply import section_intent_map
+from cadence.music.narrative_contract import contract_section_intent_map
 
 
 def harmony_planner_node(state: SongState) -> dict:
@@ -21,11 +21,15 @@ def harmony_planner_node(state: SongState) -> dict:
         key = "C"
         mode = "minor"
 
-    intent_map = section_intent_map(narrative)
+    contract = state.get("narrative_contract")
+    intent_map = contract_section_intent_map(
+        narrative, contract, context="harmony_planner", state=state,
+    )
 
     intent = state["intent"]
+    section_ids = list(contract.section_ids) if contract else list(structure.sections)
     harmony = build_harmony_plan(
-        sections=structure.sections,
+        sections=section_ids,
         key=key,
         mode=mode,
         narrative_sections=intent_map,

@@ -113,6 +113,7 @@ def fill_melody_gaps(
     intent_map: dict,
     gap_threshold_ms: float | None = None,
     use_case: str = "game",
+    composition_archetype: str | None = None,
 ) -> list[RhythmEvent]:
     """Inserta notas de paso en huecos grandes para bajar el rest ratio."""
     if len(events) < 2:
@@ -129,7 +130,9 @@ def fill_melody_gaps(
         prev = filled[-1]
         gap = _gap_ms(prev, nxt)
         intent = intent_map.get(prev.section)
-        max_ratio = melody_rest_ratio(intent, use_case=use_case)
+        max_ratio = melody_rest_ratio(
+            intent, use_case=use_case, composition_archetype=composition_archetype,
+        )
         # Umbral más estricto en secciones densas
         threshold = gap_threshold_ms
         if _is_dense_section(prev.section, intent_map):
@@ -222,7 +225,12 @@ def _should_densify(
     use_case: str,
     melody_texture: str = "balanced",
     energy_level: int = 3,
+    composition_archetype: str | None = None,
 ) -> bool:
+    if composition_archetype == "chiptune_dance":
+        return True
+    if composition_archetype == "compact_action":
+        return energy_level >= 4
     if melody_texture in ("dense", "percussive"):
         return True
     if melody_texture == "sparse":
@@ -244,23 +252,34 @@ def _should_fill_gaps(intent_map: dict, use_case: str, melody_texture: str = "ba
     return True
 
 
-def _min_notes_per_bar(use_case: str, energy: int, melody_texture: str = "balanced") -> int:
+def _min_notes_per_bar(
+    use_case: str,
+    energy: int,
+    melody_texture: str = "balanced",
+    composition_archetype: str | None = None,
+    micro_phrase_variance: float = 0.5,
+) -> int:
     uc = (use_case or "game").lower()
-    if melody_texture == "sparse":
-        return 4 if uc == "loop" else 3
-    if melody_texture in ("dense", "percussive"):
-        if energy >= 5:
-            return 8
-        return 6 if energy >= 4 else 5
-    if uc == "loop":
-        return 4
-    if uc == "cutscene":
-        return 5
-    if energy >= 5:
-        return 6
-    if energy >= 4:
-        return 5
-    return 4
+    if composition_archetype == "chiptune_dance":
+        base = 9 if energy >= 5 else 8
+    elif composition_archetype == "compact_action":
+        base = 6 if energy >= 4 else 5
+    elif melody_texture == "sparse":
+        base = 4 if uc == "loop" else 3
+    elif melody_texture in ("dense", "percussive"):
+        base = 8 if energy >= 5 else (6 if energy >= 4 else 5)
+    elif uc == "loop":
+        base = 4
+    elif uc == "cutscene":
+        base = 5
+    elif energy >= 5:
+        base = 6
+    elif energy >= 4:
+        base = 5
+    else:
+        base = 4
+    boost = int(round(micro_phrase_variance * 2))
+    return min(10, base + boost)
 
 
 def process_melody_events(
@@ -273,6 +292,8 @@ def process_melody_events(
     use_case: str = "game",
     energy_level: int = 3,
     melody_texture: str = "balanced",
+    composition_archetype: str | None = None,
+    creative_variation: object | None = None,
 ) -> list[RhythmEvent]:
     """Pipeline de post-proceso melódico — respeta silencios según estilo."""
     if not events:
@@ -284,14 +305,33 @@ def process_melody_events(
         if intent.narrative_role in ("climax", "tension") or intent.density >= DENSE_DENSITY
     }
 
-    if _should_densify(intent_map, use_case, melody_texture, energy_level):
+    from cadence.schemas.song_state import CreativeVariationBounds
+
+    micro_var = 0.5
+    if isinstance(creative_variation, CreativeVariationBounds):
+        micro_var = creative_variation.micro_phrase_variance
+
+    if _should_densify(
+        intent_map, use_case, melody_texture, energy_level, composition_archetype,
+    ):
         events = densify_melody(
             events, bpm, scale_pitches, intent_map,
-            min_notes_per_bar=_min_notes_per_bar(use_case, energy_level, melody_texture),
+            min_notes_per_bar=_min_notes_per_bar(
+                use_case,
+                energy_level,
+                melody_texture,
+                composition_archetype,
+                micro_var,
+            ),
         )
     if _should_fill_gaps(intent_map, use_case, melody_texture):
         events = fill_melody_gaps(
-            events, bpm, scale_pitches, intent_map, use_case=use_case,
+            events,
+            bpm,
+            scale_pitches,
+            intent_map,
+            use_case=use_case,
+            composition_archetype=composition_archetype,
         )
 
     events = limit_melody_leaps(
@@ -350,12 +390,20 @@ def process_melody_track(track: Track, state: SongState) -> Track:
     key = proposal.key if proposal else "C"
     mode = proposal.mode if proposal else "minor"
     energy = proposal.energy_level if proposal else 3
-    intent_map = section_intent_map(state.get("narrative"))
-    from cadence.music.repertoire_signals import default_melody_texture
+    from cadence.music.narrative_contract import section_intent_map_from_state
 
+    intent_map = section_intent_map_from_state(state, context="melody_post")
+    from cadence.music.style_archetype import (
+        get_composition_archetype,
+        melody_texture_for_archetype,
+    )
+
+    archetype = get_composition_archetype(state)
     orch = state.get("orchestration_plan")
     requested = orch.melody_texture if orch else "balanced"
-    melody_texture = default_melody_texture(energy, intent.use_case, requested)
+    melody_texture = melody_texture_for_archetype(
+        archetype, energy, intent.use_case, requested,
+    )
 
     events = process_melody_events(
         track.events,
@@ -366,6 +414,8 @@ def process_melody_track(track: Track, state: SongState) -> Track:
         use_case=intent.use_case,
         energy_level=energy,
         melody_texture=melody_texture,
+        composition_archetype=archetype,
+        creative_variation=state.get("creative_variation"),
     )
     events = _maybe_quantize_to_harmony(events, state, bpm=bpm, key=key, mode=mode)
     return track.model_copy(update={"events": events})

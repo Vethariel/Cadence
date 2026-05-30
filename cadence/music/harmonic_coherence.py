@@ -140,8 +140,20 @@ def resolve_echo_source_for_stack(
     return "melody"
 
 
-def max_lead_support_slots(energy_level: int, use_case: str) -> int:
+def max_lead_support_slots(
+    energy_level: int,
+    use_case: str,
+    *,
+    composition_archetype: str | None = None,
+) -> int:
     uc = (use_case or "game").lower()
+    arch = composition_archetype or ""
+    if arch == "compact_action":
+        return 1
+    if arch == "orchestral_boss" and energy_level >= 5:
+        return 3
+    if arch == "chiptune_dance" and energy_level >= 5:
+        return 3
     if uc in ("loop", "cutscene") or energy_level <= 2:
         return 0 if energy_level <= 1 else 1
     if energy_level >= 4 and uc == "game":
@@ -155,13 +167,18 @@ def apply_lead_support_cap(
     energy_level: int,
     use_case: str,
     protected: set[str] | None = None,
+    composition_archetype: str | None = None,
+    max_supports: int | None = None,
 ) -> set[str]:
     """
     melody + hasta N soportes (arp > counter > pluck > stab).
     echo_synth solo si hay stack armónico denso (≥2 soportes o E≥4 game).
     """
     protected = protected or set()
-    max_supports = max_lead_support_slots(energy_level, use_case)
+    if max_supports is None:
+        max_supports = max_lead_support_slots(
+            energy_level, use_case, composition_archetype=composition_archetype,
+        )
 
     supports = [i for i in LEAD_SUPPORT_KEEP_ORDER if i in active_ids]
     kept: list[str] = []
@@ -175,8 +192,12 @@ def apply_lead_support_cap(
     result |= set(kept)
 
     uc = (use_case or "game").lower()
+    arch = composition_archetype or ""
     if "echo_synth" in active_ids:
-        if len(kept) >= 2 or (energy_level >= 4 and uc == "game"):
+        if arch == "compact_action":
+            if "echo_synth" in protected:
+                result.add("echo_synth")
+        elif len(kept) >= 2 or (energy_level >= 4 and uc == "game"):
             result.add("echo_synth")
 
     return result

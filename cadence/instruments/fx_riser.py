@@ -2,7 +2,8 @@
 
 from cadence.instruments.context import ComposeContext
 from cadence.instruments.registry import InstrumentDefinition, register
-from cadence.agent.nodes.narrative_apply import section_intent_map
+from cadence.music.narrative_contract import section_intent_map_from_state
+from cadence.music.seed_policy import seed_for_state
 from cadence.schemas.song_state import RhythmEvent, Track
 
 FX_TRANSITIONS = {"riser", "filter_sweep", "pickup"}
@@ -19,7 +20,8 @@ def _compose_fx_riser(ctx: ComposeContext) -> Track | None:
     if not narrative:
         return None
 
-    intent_map = section_intent_map(narrative)
+    seed = seed_for_state(ctx.state, "fx_riser") or ctx.state.get("generation_seed", 0)
+    intent_map = section_intent_map_from_state(ctx.state, context="fx_riser")
     active = set(ctx.active_sections())
     step_ms = _ms_per_step(ctx.bpm)
     steps_per_bar = 16
@@ -42,7 +44,7 @@ def _compose_fx_riser(ctx: ComposeContext) -> Track | None:
                 trans = intent.transition_out
                 if trans == "riser":
                     for step in range(steps_per_bar):
-                        pitch = 48 + int(step * 1.5)
+                        pitch = 48 + int(step * 1.5) + (seed % 5)
                         vel = 40 + int(step / steps_per_bar * 80)
                         events.append(RhythmEvent(
                             t=int(t_bar + step * step_ms),

@@ -2,6 +2,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from cadence.config import settings
+from cadence.music.seed_policy import node_temperature
 from cadence.music.style_profile import format_profile_for_llm, merge_proposal_genre_tags
 from cadence.schemas.song_state import SongState, TechnicalProposal
 
@@ -20,7 +21,7 @@ def technical_proposal_node(state: SongState) -> dict:
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
         google_api_key=settings.google_api_key,
-        temperature=0.4,
+        temperature=node_temperature("technical_proposal"),
     ).with_structured_output(TechnicalProposal)
 
     system = SystemMessage(content=(
@@ -28,6 +29,8 @@ def technical_proposal_node(state: SongState) -> dict:
         "Tu tarea es traducir una descripción creativa en parámetros musicales técnicos precisos. "
         "Piensa en el contexto de uso, el mood y el perfil de estilo enriquecido para tomar decisiones coherentes. "
         "Los genre_tags deben alinearse con los géneros del perfil de estilo, no con etiquetas genéricas incorrectas. "
+        "Si el perfil es chiptune/arcade, energy 4-5; si es compact/platform, energy 4 sin orquesta masiva; "
+        "si es orchestral boss, energy 4-5 con géneros orquestales. "
         "Responde SOLO con el objeto estructurado, sin explicaciones adicionales."
     ))
 

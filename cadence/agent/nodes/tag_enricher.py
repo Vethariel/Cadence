@@ -4,6 +4,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from cadence.config import settings
+from cadence.music.seed_policy import node_temperature
 from cadence.music.genre_catalog import format_genre_catalog_for_llm, normalize_genres
 from cadence.music.style_profile import sanitize_style_references
 from cadence.schemas.song_state import MusicalStyleProfile, SongState
@@ -19,7 +20,7 @@ def tag_enricher_node(state: SongState) -> dict:
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
         google_api_key=settings.google_api_key,
-        temperature=0.35,
+        temperature=node_temperature("tag_enricher"),
     ).with_structured_output(MusicalStyleProfile)
 
     hints = ", ".join(intent.style_tags) if intent.style_tags else "ninguna"
@@ -39,8 +40,14 @@ def tag_enricher_node(state: SongState) -> dict:
         "Si el prompt no nombra ninguno, deja references=[]. "
         "NO pongas géneros del catálogo, moods ni palabras del propio brief (techno, dubstep, boss fight…).\n"
         "- instrumentation: timbres/roles deseados en lenguaje natural.\n"
-        "- avoid: timbres o familias que NO encajan (calliope, music box, pad orquestal "
-        "en dubstep, etc.).\n"
+        "- avoid: timbres o familias que NO encajan. Usa frases explícitas "
+        "(no drums, without percussion) si quieres omitir batería; "
+        "'drum machines' solo rechaza kits electrónicos, no taiko ni orquesta.\n"
+        "- Si el prompt pide orquestación COMPACTA o pocos instrumentos a la vez "
+        "(plataforma, Kraid, boss compacto): géneros action/platform/combat — "
+        "NO uses orchestral/symphonic/cinematic como géneros principales.\n"
+        "- Si pide chiptune/eurobeat/arcade denso: chiptune, eurobeat, arcade.\n"
+        "- Si pide boss orquestal épico con muchas capas: orchestral, symphonic, epic.\n"
         "- drum_character: una frase sobre el groove (four-on-floor, half-time dubstep…).\n"
         "- reasoning: 1–2 frases explicando la traducción.\n"
         "Responde SOLO con el objeto estructurado."

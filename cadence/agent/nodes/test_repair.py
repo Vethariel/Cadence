@@ -1,5 +1,9 @@
 from cadence.schemas.song_state import ValidationResult
-from cadence.agent.nodes.repair import determine_repair_layers, failed_check_names
+from cadence.agent.nodes.repair import (
+    determine_repair_layers,
+    determine_repair_plan,
+    failed_check_names,
+)
 
 
 def _state_with_errors(errors: list[str], retry_count: int = 0):
@@ -75,6 +79,45 @@ def test_timing_drums_routes_to_rhythm():
     print("✓ timing_order (drums) → rhythm layers")
 
 
+def test_instrumental_richness_routes_to_arrangement():
+    state = _state_with_errors([
+        "[instrumental_richness] Riqueza instrumental baja: capas activas μ=2.0",
+    ])
+    plan = determine_repair_plan(state)
+    assert plan["repair_target"] == "arrangement_planner"
+    assert "restore_optional_layers" in plan["repair_actions"]
+    print("✓ instrumental_richness → arrangement + restore_optionals")
+
+
+def test_dynamic_range_routes_to_post_process():
+    state = _state_with_errors(["[dynamic_range] Dinámica plana entre secciones"])
+    plan = determine_repair_plan(state)
+    assert plan["repair_target"] == "post_process"
+    assert "recalc_dynamic_range" in plan["repair_actions"]
+    print("✓ dynamic_range → post_process")
+
+
+def test_intensity_arc_routes_to_post_process():
+    state = _state_with_errors([
+        "[intensity_arc] Sección clave 'drop' no alcanza la intensidad esperada",
+    ])
+    plan = determine_repair_plan(state)
+    assert plan["repair_target"] == "post_process"
+    assert "adjust_section_intensity" in plan["repair_actions"]
+    print("✓ intensity_arc → post_process")
+
+
+def test_non_melody_failure_avoids_melody_only():
+    state = _state_with_errors([
+        "[instrumental_richness] capas activas μ=2.0",
+        "[drums_present] Drums ausentes en demasiadas secciones",
+    ])
+    layers = set(determine_repair_layers(state))
+    assert "drums" in layers
+    assert layers != {"melody"}
+    print("✓ non-melody failures avoid melody-only fallback")
+
+
 def test_failed_check_names_parser():
     errors = ["[melody_coverage] foo", "[drums_present] bar"]
     assert failed_check_names(errors) == {"melody_coverage", "drums_present"}
@@ -90,4 +133,8 @@ if __name__ == "__main__":
     test_drums_present_routes_to_rhythm()
     test_pitch_range_routes_to_melody()
     test_timing_drums_routes_to_rhythm()
+    test_instrumental_richness_routes_to_arrangement()
+    test_dynamic_range_routes_to_post_process()
+    test_intensity_arc_routes_to_post_process()
+    test_non_melody_failure_avoids_melody_only()
     print("\n✓ todos los tests de repair OK")

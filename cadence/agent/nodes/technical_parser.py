@@ -2,6 +2,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from cadence.config import settings
+from cadence.music.seed_policy import node_temperature
 from cadence.music.style_profile import (
     format_profile_for_llm,
     merge_proposal_genre_tags,
@@ -24,7 +25,7 @@ def technical_parser_node(state: SongState) -> dict:
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
         google_api_key=settings.google_api_key,
-        temperature=0.1,
+        temperature=node_temperature("technical_parser"),
     ).with_structured_output(TechnicalProposal)
 
     system = SystemMessage(content=(

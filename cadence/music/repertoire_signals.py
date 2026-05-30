@@ -55,8 +55,27 @@ def is_sparse_pattern(pattern_id: str | None, kind: str) -> bool:
     return 0 < d <= SPARSE_STEPS_PER_BAR
 
 
-def drum_pool_priority(energy_level: int, use_case: str) -> list[str]:
+def drum_pool_priority(
+    energy_level: int,
+    use_case: str,
+    *,
+    composition_archetype: str | None = None,
+) -> list[str]:
     from cadence.music.strategy_pools import DRUM_POOL
+
+    arch = composition_archetype or ""
+    if arch == "chiptune_dance":
+        return ["breakbeat", "dnb", "techno", "house"] + [
+            p for p in DRUM_POOL if p not in ("breakbeat", "dnb", "techno", "house")
+        ]
+    if arch == "compact_action":
+        return ["breakbeat", "techno", "house", "halftime"] + [
+            p for p in DRUM_POOL if p not in ("breakbeat", "techno", "house", "halftime")
+        ]
+    if arch == "orchestral_boss":
+        return ["breakbeat", "industrial", "dubstep", "techno"] + [
+            p for p in DRUM_POOL if p not in ("breakbeat", "industrial", "dubstep", "techno")
+        ]
 
     uc = (use_case or "game").lower()
     if uc == "loop" or energy_level <= 1:
@@ -72,8 +91,21 @@ def drum_pool_priority(energy_level: int, use_case: str) -> list[str]:
     return list(DRUM_POOL)
 
 
-def harmony_pool_priority(energy_level: int, use_case: str) -> list[str]:
+def harmony_pool_priority(
+    energy_level: int,
+    use_case: str,
+    *,
+    composition_archetype: str | None = None,
+) -> list[str]:
     from cadence.music.strategy_pools import HARMONY_POOL
+
+    arch = composition_archetype or ""
+    if arch == "chiptune_dance":
+        return ["dance", "aggressive", "game", "modal", "classic", "dark", "cinematic"]
+    if arch == "compact_action":
+        return ["game", "aggressive", "modal", "classic", "dance", "dark", "cinematic"]
+    if arch == "orchestral_boss":
+        return ["cinematic", "aggressive", "dark", "game", "modal", "dance", "classic"]
 
     uc = (use_case or "game").lower()
     if uc == "loop" or energy_level <= 1:
@@ -110,6 +142,8 @@ def layer_pattern_bias(
     energy_level: int,
     use_case: str,
     generation_seed: int,
+    *,
+    composition_archetype: str | None = None,
 ) -> dict[str, list[str] | str]:
     """Candidatos de patrón por energía y rol — sin tags."""
     from cadence.music.instrument_patterns import (
@@ -120,7 +154,37 @@ def layer_pattern_bias(
     )
 
     uc = (use_case or "game").lower()
+    arch = composition_archetype or ""
     bias: dict[str, list[str] | str] = {"echo_source": "auto"}
+
+    if arch == "compact_action":
+        bias["arp_candidates"] = ["broken", "up", "pingpong", "syncopated"] + list(ARP_PATTERNS)
+        bias["counter_candidates"] = ["sparse", "backbeat", "offbeat_sync"] + list(COUNTER_PATTERN_POOL)
+        bias["stab_candidates"] = ["sparse", "half_bar", "offbeat"] + list(STAB_PATTERN_POOL)
+        bias["pluck_candidates"] = ["sparse", "eighth"] + list(PLUCK_PATTERN_POOL)
+        bias["perc_candidates"] = ["backbeat", "sparse"] + list(PERC_PATTERN_POOL)
+        bias["bass_candidates"] = ["pulse", "root_fifth", "half_time", "driving"]
+        bias["echo_source"] = "melody"
+        return bias
+
+    if arch == "chiptune_dance":
+        bias["arp_candidates"] = ["sixteenth", "cascade", "syncopated", "broken"] + list(ARP_PATTERNS)
+        bias["stab_candidates"] = ["sixteenth", "four_on", "syncopated"] + list(STAB_PATTERN_POOL)
+        bias["perc_candidates"] = ["syncopated", "four_clap", "backbeat"] + list(PERC_PATTERN_POOL)
+        bias["pluck_candidates"] = ["sixteenth", "eighth", "syncopated"] + list(PLUCK_PATTERN_POOL)
+        bias["counter_candidates"] = ["offbeat_sync", "sixteenth", "syncopated"] + list(COUNTER_PATTERN_POOL)
+        bias["bass_candidates"] = ["octave_pulse", "driving", "syncopated"]
+        return bias
+
+    if arch == "orchestral_boss":
+        bias["arp_candidates"] = ["broken", "up", "pingpong", "syncopated"] + list(ARP_PATTERNS)
+        bias["stab_candidates"] = ["orchestral_sync", "half_bar", "offbeat"] + list(STAB_PATTERN_POOL)
+        bias["counter_candidates"] = ["orchestral_sync", "offbeat_sync", "sparse"] + list(COUNTER_PATTERN_POOL)
+        bias["pluck_candidates"] = ["sparse", "eighth"] + list(PLUCK_PATTERN_POOL)
+        bias["perc_candidates"] = ["syncopated", "four_clap", "backbeat"] + list(PERC_PATTERN_POOL)
+        bias["bass_candidates"] = ["driving", "octave_pulse", "half_time"]
+        bias["echo_source"] = "chord_stab"
+        return bias
 
     if energy_level <= 2 or uc == "loop":
         bias["arp_candidates"] = ["up", "broken", "pingpong"]
@@ -157,6 +221,7 @@ def instruments_implied_by_strategies(
     *,
     energy_level: int = 3,
     use_case: str = "game",
+    composition_archetype: str | None = None,
 ) -> set[str]:
     """Capas que la estrategia ya compromete (deben materializarse en el arreglo)."""
     if not strategies:
@@ -164,6 +229,34 @@ def instruments_implied_by_strategies(
 
     implied: set[str] = set()
     uc = (use_case or "game").lower()
+    arch = composition_archetype or ""
+
+    if arch == "compact_action":
+        if energy_level >= 3 and uc != "loop":
+            implied.add("pad")
+        if strategies.counter_pattern and not is_sparse_pattern(
+            strategies.counter_pattern, "counter",
+        ):
+            implied.add("countermelody")
+        echo = strategies.echo_source or "auto"
+        if echo in ("melody", "arp_synth", "chord_stab"):
+            implied.add("echo_synth")
+        return implied
+
+    if arch == "orchestral_boss":
+        implied.add("pad")
+        if strategies.counter_pattern and strategies.counter_pattern in COUNTER_STEP_PATTERNS:
+            implied.add("countermelody")
+        if strategies.stab_pattern and not is_sparse_pattern(strategies.stab_pattern, "stab"):
+            implied.add("chord_stab")
+        if strategies.perc_pattern and not is_sparse_pattern(strategies.perc_pattern, "perc"):
+            implied.add("perc_aux")
+        echo = strategies.echo_source or "auto"
+        if echo in ("melody", "arp_synth", "chord_stab"):
+            implied.add("echo_synth")
+        if is_dense_pattern(strategies.arp_pattern, "arp") and energy_level >= 5:
+            implied.add("arp_synth")
+        return implied
 
     if is_dense_pattern(strategies.arp_pattern, "arp") or (
         strategies.arp_pattern == "sixteenth"
@@ -197,10 +290,15 @@ def instruments_implied_by_strategies(
     if echo in ("melody", "arp_synth", "chord_stab"):
         implied.add("echo_synth")
     elif echo == "auto" and energy_level >= 4 and uc == "game":
-        implied.add("echo_synth")
+        if arch != "compact_action":
+            implied.add("echo_synth")
 
     if energy_level >= 3 and uc not in ("loop",) and not is_sparse_piece(energy_level, uc):
         implied.add("pad")
+
+    if arch == "chiptune_dance" and energy_level >= 4:
+        implied.add("arp_synth")
+        implied.add("perc_aux")
 
     return implied
 
@@ -223,8 +321,27 @@ def percussion_suppressed(
     if not style_profile or not style_profile.avoid:
         return False
     avoid_l = " ".join(style_profile.avoid).lower()
-    markers = ("drum", "percuss", "kick", "snare", "ritmo", "rhythm", "beat")
-    return any(m in avoid_l for m in markers)
+    explicit_no = (
+        "no drums", "without drums", "no drum kit", "no percussion", "without percussion",
+        "no kick", "no snare", "no beat", "no rhythm", "sin batería", "sin percusión",
+        "no drum", "without drum", "avoid drums", "avoid percussion",
+        "no percussive drums", "percussive drums",
+        "sin bateria", "sin percusion",
+    )
+    if any(phrase in avoid_l for phrase in explicit_no):
+        return True
+    import re
+
+    if re.search(
+        r"\b(?:no|without|avoid|sin)\s+(?:drums?|percussion|kick|snare|beat|rhythm)\b",
+        avoid_l,
+    ):
+        return True
+    # "drum machines" / kits electrónicos ≠ prohibir batería acústica/taiko
+    stripped = re.sub(r"\bdrum\s+machines?\b", "", avoid_l)
+    if re.search(r"\b(?:no|without|avoid|sin)\s+drums?\b", stripped):
+        return True
+    return False
 
 
 def schedule_density_thresholds(energy_level: int, use_case: str) -> dict[str, float]:
@@ -316,7 +433,12 @@ def resolve_harmony_pool_choice(
     )
 
 
-def max_optional_budget(use_case: str, energy_level: int) -> tuple[int, int]:
+def max_optional_budget(
+    use_case: str,
+    energy_level: int,
+    *,
+    composition_archetype: str | None = None,
+) -> tuple[int, int]:
     """(max_optionals, max_lead_optionals) por rol y energía."""
     uc = (use_case or "game").lower()
     from cadence.music.instrument_catalog import (
@@ -326,6 +448,12 @@ def max_optional_budget(use_case: str, energy_level: int) -> tuple[int, int]:
 
     max_opt = MAX_OPTIONAL_BY_USE_CASE.get(uc, 4)
     max_lead = MAX_LEAD_OPTIONALS.get(uc, 2)
+
+    arch = composition_archetype or ""
+    if arch == "compact_action":
+        return min(max_opt, 3), 1
+    if arch == "orchestral_boss" and energy_level >= 4:
+        return min(max_opt + 1, 5), min(max_lead + 1, 3)
 
     if energy_level <= 2 and uc != "loop":
         max_opt = min(max_opt, 2)
@@ -347,10 +475,23 @@ def enrich_orchestration_from_strategies(
     use_case: str,
     generation_seed: int = 0,
     style_profile: MusicalStyleProfile | None = None,
+    raw_prompt: str = "",
+    composition_archetype: str | None = None,
 ) -> OrchestrationPlan:
     """Añade capas que la estrategia ya define pero el agente omitió."""
+    from cadence.music.style_archetype import infer_composition_archetype
+
+    arch = composition_archetype or infer_composition_archetype(
+        style_profile=style_profile,
+        raw_prompt=raw_prompt,
+        use_case=use_case,
+        energy_level=energy_level,
+    )
     implied = instruments_implied_by_strategies(
-        strategies, energy_level=energy_level, use_case=use_case,
+        strategies,
+        energy_level=energy_level,
+        use_case=use_case,
+        composition_archetype=arch,
     )
     if percussion_suppressed(
         use_case=use_case, energy_level=energy_level, style_profile=style_profile,
@@ -379,8 +520,13 @@ def enrich_orchestration_from_strategies(
         if "drums" in by_id:
             by_id["drums"] = by_id["drums"].model_copy(update={"active": False})
 
-    texture = default_melody_texture(
-        energy_level, use_case, plan.melody_texture,
+    from cadence.music.style_archetype import (
+        infer_composition_archetype,
+        melody_texture_for_archetype,
+    )
+
+    texture = melody_texture_for_archetype(
+        arch, energy_level, use_case, plan.melody_texture,
     )
 
     instruments = list(by_id.values())

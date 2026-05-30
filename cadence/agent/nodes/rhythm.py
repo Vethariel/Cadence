@@ -1,13 +1,19 @@
-from cadence.schemas.song_state import HarmonyPlan, SongNarrative, SongState, Track, RhythmEvent
+from cadence.schemas.song_state import (
+    HarmonyPlan,
+    SectionIntent,
+    SongState,
+    Track,
+    RhythmEvent,
+)
 from cadence.agent.nodes.narrative_apply import (
     bar_variant_step,
     bass_should_play,
     drum_velocities,
     hihat_active,
-    section_intent_map,
     snare_ghost_velocity,
     transition_events,
 )
+from cadence.music.narrative_contract import section_intent_map_from_state
 from cadence.music.harmony_theory import (
     chord_at_bar,
     chord_pitches,
@@ -78,7 +84,7 @@ def _generate_drum_track(
     bars_per_section: dict[str, int],
     bpm: int,
     genre_tags: list[str],
-    narrative: SongNarrative | None = None,
+    intent_map: dict[str, SectionIntent] | None = None,
     drum_pattern_id: str | None = None,
 ) -> Track:
     pattern = _select_pattern(genre_tags, drum_pattern_id)
@@ -87,7 +93,7 @@ def _generate_drum_track(
     events = []
     beat_index = 0
     current_t = 0
-    intent_map = section_intent_map(narrative)
+    intent_map = intent_map or {}
 
     for section in sections:
         bars = bars_per_section.get(section, 4)
@@ -161,7 +167,7 @@ def _generate_bass_track(
     bpm: int,
     key: str,
     mode: str,
-    narrative: SongNarrative | None = None,
+    intent_map: dict[str, SectionIntent] | None = None,
     harmony: HarmonyPlan | None = None,
     bass_pattern_id: str | None = None,
 ) -> Track:
@@ -172,7 +178,7 @@ def _generate_bass_track(
     events = []
     beat_index = 0
     current_t = 0
-    intent_map = section_intent_map(narrative)
+    intent_map = intent_map or {}
     harmony_map = section_harmony_map(harmony)
     bass_steps = get_bass_pattern(bass_pattern_id or "root_fifth")
 
@@ -259,16 +265,16 @@ def rhythm_engine_node(state: SongState) -> dict:
         mode = "minor"
         genre_tags = intent.style_tags
 
-    narrative = state.get("narrative")
     harmony = state.get("harmony")
     strategies = state.get("strategies")
+    intent_map = section_intent_map_from_state(state, context="rhythm_engine")
 
     drums = _generate_drum_track(
         sections=structure.sections,
         bars_per_section=structure.bars_per_section,
         bpm=bpm,
         genre_tags=genre_tags,
-        narrative=narrative,
+        intent_map=intent_map,
         drum_pattern_id=strategies.drum_pattern if strategies else None,
     )
 
@@ -278,7 +284,7 @@ def rhythm_engine_node(state: SongState) -> dict:
         bpm=bpm,
         key=key,
         mode=mode,
-        narrative=narrative,
+        intent_map=intent_map,
         harmony=harmony,
         bass_pattern_id=strategies.bass_pattern if strategies else None,
     )

@@ -3,10 +3,12 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from cadence.music.style_archetype import get_composition_archetype
+from cadence.music.quality_status import compute_quality_metadata
 from cadence.music.style_profile import effective_genre_tags
 from cadence.schemas.song_state import SongState
-from cadence.agent.nodes.narrative_apply import section_intent_map
 from cadence.music.crescendo import narrative_intensity_curve
+from cadence.music.narrative_contract import contract_section_intent_map
 
 
 # ── Helpers ───────────────────────────────────────────────────
@@ -26,11 +28,14 @@ def _compute_intensity_curve(state: SongState) -> list[float]:
     """Curva de intensidad por sección (narrativa o inferida desde drums)."""
     structure = state["structure"]
     narrative = state.get("narrative")
+    contract = state.get("narrative_contract")
 
     if narrative:
         return narrative_intensity_curve(
             structure.sections,
-            section_intent_map(narrative),
+            contract_section_intent_map(
+                narrative, contract, context="exporter", state=state,
+            ),
         )
 
     tracks = state.get("tracks", [])
@@ -108,6 +113,11 @@ def _build_rsong(state: SongState) -> dict:
     development = state.get("development")
     strategies = state.get("strategies")
     validation = state["validation_result"]
+    narrative_contract = state.get("narrative_contract")
+    section_alignment = state.get("section_alignment")
+    narrative_anchors = state.get("narrative_anchors")
+    creative_variation = state.get("creative_variation")
+    node_seeds = state.get("node_seeds")
 
     profile = state.get("style_profile")
 
@@ -141,6 +151,7 @@ def _build_rsong(state: SongState) -> dict:
             "total_bars": structure.total_bars,
         },
         "game_meta": {
+            "composition_archetype": get_composition_archetype(state),
             "use_case": intent.use_case,
             "loop_point_ms": _compute_loop_point(state),
             "intensity_curve": _compute_intensity_curve(state),
@@ -148,6 +159,41 @@ def _build_rsong(state: SongState) -> dict:
             "energy_level": energy_level,
             "hit_objects_hint": intent.use_case in ("game", "loop"),
             "sections": structure.sections,
+            **(
+                {
+                    "narrative_contract": narrative_contract.model_dump(),
+                }
+                if narrative_contract
+                else {}
+            ),
+            **(
+                {
+                    "narrative_anchors": narrative_anchors.model_dump(),
+                }
+                if narrative_anchors
+                else {}
+            ),
+            **(
+                {
+                    "creative_variation": creative_variation.model_dump(),
+                }
+                if creative_variation
+                else {}
+            ),
+            **(
+                {
+                    "node_seeds": node_seeds.model_dump(),
+                }
+                if node_seeds
+                else {}
+            ),
+            **(
+                {
+                    "section_alignment": section_alignment.model_dump(),
+                }
+                if section_alignment
+                else {}
+            ),
             **(
                 {
                     "style_profile": profile.model_dump(),
@@ -167,6 +213,7 @@ def _build_rsong(state: SongState) -> dict:
                     "development": {
                         "generation_seed": development.generation_seed,
                         "global_motif": development.global_motif,
+                        "texture_mode": development.texture_mode,
                         "sections": [s.model_dump() for s in development.sections],
                     }
                 }
@@ -226,10 +273,15 @@ def _build_rsong(state: SongState) -> dict:
                 else {}
             ),
         },
+        "quality": compute_quality_metadata(state),
         "validation": {
             "score": validation.score,
+            "passed": validation.passed,
             "retry_count": state.get("retry_count", 0),
+            "errors": list(validation.errors),
+            "warnings": list(validation.warnings),
         },
+        "pipeline_trace": (state.get("pipeline_trace") or [])[-50:],
         "tracks": [
             {
                 "id": track.id,
@@ -280,6 +332,9 @@ def export_node(state: SongState) -> dict:
     print(f"  [export] tracks     : {[t['id'] for t in rsong_data['tracks']]}")
     print(f"  [export] duration   : {rsong_data['header']['duration_ms']}ms")
     print(f"  [export] total events: {sum(t['event_count'] for t in rsong_data['tracks'])}")
+    q = rsong_data.get("quality", {})
+    print(f"  [export] quality_status: {q.get('quality_status')}")
+    print(f"  [export] request_id    : {q.get('request_id')}")
 
     return {
         "export_path": str(export_path),

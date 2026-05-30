@@ -22,6 +22,32 @@ def test_loop_suppresses_percussion():
     assert percussion_suppressed(use_case="game", energy_level=5) is False
 
 
+def test_orchestral_avoid_drum_machines_keeps_drums():
+    from cadence.schemas.song_state import MusicalStyleProfile
+
+    profile = MusicalStyleProfile(
+        genres=["orchestral", "symphonic"],
+        avoid=["drum machines", "synthesizers"],
+    )
+    assert percussion_suppressed(
+        use_case="game", energy_level=5, style_profile=profile,
+    ) is False
+
+
+def test_compact_implies_fewer_layers():
+    from cadence.music.style_archetype import infer_composition_archetype
+
+    s = select_strategies(
+        99, ["platform"], "minor", "game", 4,
+        composition_archetype="compact_action",
+    )
+    implied = instruments_implied_by_strategies(
+        s, energy_level=4, use_case="game", composition_archetype="compact_action",
+    )
+    assert "arp_synth" not in implied
+    assert "synth_pluck" not in implied
+
+
 def test_enrich_adds_missing_arp_and_echo():
     strategies = GenerationStrategies(
         generation_seed=1,
@@ -92,4 +118,6 @@ if __name__ == "__main__":
     test_enrich_adds_missing_arp_and_echo()
     test_harmony_prefers_strategies_at_high_energy()
     test_sparse_loop_enrich_deactivates_drums_with_avoid()
+    test_orchestral_avoid_drum_machines_keeps_drums()
+    test_compact_implies_fewer_layers()
     print("All repertoire signals tests passed.")

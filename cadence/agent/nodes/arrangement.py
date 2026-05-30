@@ -6,12 +6,25 @@ from cadence.schemas.song_state import (
     OrchestrationPlan,
     SongState,
 )
-from cadence.agent.nodes.narrative_apply import section_intent_map
+from cadence.music.creative_variation import clamp_optional_layer_ids
+from cadence.music.narrative_anchors import density_floor
+from cadence.music.narrative_contract import contract_section_intent_map
+from cadence.music.seed_policy import seed_for_state
+
+
+def _intent_map_for_state(state: SongState) -> dict:
+    return contract_section_intent_map(
+        state.get("narrative"),
+        state.get("narrative_contract"),
+        context="arrangement_planner",
+        state=state,
+    )
 from cadence.music.instrument_catalog import active_instrument_ids, select_fallback_lead_layers
 from cadence.music.repertoire_signals import (
     instruments_implied_by_strategies,
     percussion_suppressed,
 )
+from cadence.music.style_archetype import get_composition_archetype
 from cadence.music.style_profile import effective_genre_tags
 from cadence.music.layer_schedule import (
     DENSITY_ARP,
@@ -102,10 +115,12 @@ def _effective_instruments(state: SongState, plan: OrchestrationPlan) -> set[str
     intent = state["intent"]
     energy = proposal.energy_level if proposal else 3
     strategies = state.get("strategies")
+    archetype = get_composition_archetype(state)
     chosen |= instruments_implied_by_strategies(
         strategies,
         energy_level=energy,
         use_case=intent.use_case,
+        composition_archetype=archetype,
     )
     profile = state.get("style_profile")
     if percussion_suppressed(
@@ -115,11 +130,25 @@ def _effective_instruments(state: SongState, plan: OrchestrationPlan) -> set[str
     ):
         chosen.discard("drums")
 
-    return apply_lead_support_cap(
+    repair_actions = state.get("repair_actions") or []
+    max_supports = None
+    if "restore_optional_layers" in repair_actions:
+        from cadence.music.harmonic_coherence import max_lead_support_slots
+
+        max_supports = max_lead_support_slots(
+            energy, intent.use_case, composition_archetype=archetype,
+        ) + 1
+
+    capped = apply_lead_support_cap(
         chosen,
         energy_level=energy,
         use_case=intent.use_case,
+        composition_archetype=archetype,
+        max_supports=max_supports,
     )
+    if "restore_optional_layers" in repair_actions:
+        return capped
+    return clamp_optional_layer_ids(capped, state.get("creative_variation"))
 
 
 def _ensure_texture_bed_layers(
@@ -158,8 +187,7 @@ def _build_layers_from_orchestration(
 ) -> list[LayerSpec]:
     """Materializa capas según el conjunto elegido por el agente."""
     structure = state["structure"]
-    narrative = state.get("narrative")
-    intent_map = section_intent_map(narrative)
+    intent_map = _intent_map_for_state(state)
     chosen = _effective_instruments(state, plan)
 
     layers: list[LayerSpec] = []
@@ -177,9 +205,11 @@ def _build_layers_from_orchestration(
 
     for section_id in structure.sections:
         sec_intent = intent_map.get(section_id)
+        anchors = state.get("narrative_anchors")
         density = sec_intent.density if sec_intent else 0.5
+        pad_floor = density_floor(anchors, section_id, 0.25)
 
-        if density >= 0.25 and "pad" in chosen:
+        if density >= pad_floor and "pad" in chosen:
             pad_sections.append(section_id)
         if density >= DENSITY_CHORD_STAB and "chord_stab" in chosen:
             chord_stab_sections.append(section_id)
@@ -226,9 +256,8 @@ def _build_layers_from_orchestration(
 
 def _build_layers_deterministic(state: SongState) -> list[LayerSpec]:
     """Fallback sin plan del agente — capas opcionales por género y seed."""
-    narrative = state.get("narrative")
     structure = state["structure"]
-    intent_map = section_intent_map(narrative)
+    intent_map = _intent_map_for_state(state)
     intent = state["intent"]
     proposal = state.get("technical_proposal")
 
@@ -391,9 +420,9 @@ def arrangement_planner_node(state: SongState) -> dict:
     (cuándo entra cada capa según narrativa) o fallback determinista.
     """
     structure = state["structure"]
-    narrative = state.get("narrative")
-    intent_map = section_intent_map(narrative)
-    seed = state.get("generation_seed", 0)
+    intent_map = _intent_map_for_state(state)
+    seed = seed_for_state(state, "arrangement_planner") or state.get("generation_seed", 0)
+    schedule_seed = seed_for_state(state, "layer_schedule") or seed
     orchestration = state.get("orchestration_plan")
     proposal = state.get("technical_proposal")
     energy = proposal.energy_level if proposal else 3
@@ -423,14 +452,14 @@ def arrangement_planner_node(state: SongState) -> dict:
         and use_case == "game"
         and energy >= 4
         and optional_count >= 4
-        and texture_mode != "bedded"
+        and texture_mode not in ("bedded", "compact")
     ):
         texture_mode = "simultaneous"
     schedule = build_layer_schedule(
         structure,
         layer_ids,
         intent_map,
-        generation_seed=seed,
+        generation_seed=schedule_seed,
         energy_level=energy,
         use_case=use_case,
         development=development,

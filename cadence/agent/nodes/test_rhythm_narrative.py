@@ -10,6 +10,11 @@ from cadence.schemas.song_state import (
     UserIntent,
 )
 from cadence.agent.nodes.rhythm import _generate_bass_track, _generate_drum_track
+from cadence.music.narrative_contract import contract_section_intent_map
+
+
+def _intent_map(narrative: SongNarrative | None):
+    return contract_section_intent_map(narrative, None)
 
 
 def _base_structure() -> SongStructure:
@@ -83,7 +88,7 @@ def test_drum_density_scales_velocity():
         bars_per_section=structure.bars_per_section,
         bpm=120,
         genre_tags=["techno"],
-        narrative=narrative,
+        intent_map=_intent_map(narrative),
     )
     intro_kicks = [e for e in drums.events if e.section == "intro" and e.pitch == 36]
     drop_kicks = [e for e in drums.events if e.section == "drop" and e.pitch == 36]
@@ -101,7 +106,7 @@ def test_transition_riser_on_last_bar():
         bars_per_section=structure.bars_per_section,
         bpm=120,
         genre_tags=["techno"],
-        narrative=narrative,
+        intent_map=_intent_map(narrative),
     )
     buildup_events = [e for e in drums.events if e.section == "build-up"]
     # build-up tiene 2 compases; riser en el último → más eventos snare en bar 2
@@ -118,7 +123,7 @@ def test_transition_cut_silences_second_half():
         bars_per_section=structure.bars_per_section,
         bpm=120,
         genre_tags=["techno"],
-        narrative=narrative,
+        intent_map=_intent_map(narrative),
     )
     drop_events = [e for e in drums.events if e.section == "drop"]
     # 2 compases; último compás cut → solo steps 0-7 del bar 2 + bar 1 completo
@@ -135,7 +140,7 @@ def test_bass_skips_sparse_breakdown():
         bpm=120,
         key="C",
         mode="minor",
-        narrative=narrative,
+        intent_map=_intent_map(narrative),
     )
     breakdown_notes = [e for e in bass.events if e.section == "breakdown"]
     assert len(breakdown_notes) == 0, "bajo debe omitirse con density=0.15"

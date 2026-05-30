@@ -6,7 +6,8 @@ from cadence.music.harmony_theory import (
     chord_pitches,
     section_harmony_map,
 )
-from cadence.agent.nodes.narrative_apply import section_intent_map
+from cadence.music.narrative_contract import contract_section_intent_map
+from cadence.schemas.song_state import SectionIntent
 
 
 def _ms_per_bar(bpm: int) -> float:
@@ -24,10 +25,10 @@ def _generate_pad_track(
     bars_per_section: dict[str, int],
     bpm: int,
     harmony: HarmonyPlan,
-    narrative=None,
+    intent_map: dict[str, SectionIntent] | None = None,
 ) -> Track:
     harmony_map = section_harmony_map(harmony)
-    intent_map = section_intent_map(narrative)
+    intent_map = intent_map or {}
     ms_per_bar = _ms_per_bar(bpm)
     events: list[RhythmEvent] = []
     current_t = 0.0
@@ -91,13 +92,19 @@ def pad_composer_node(state: SongState) -> dict:
         return {"tracks": existing}
 
     bpm = proposal.bpm if proposal else 120
+    intent_map = contract_section_intent_map(
+        state.get("narrative"),
+        state.get("narrative_contract"),
+        context="pad",
+        state=state,
+    )
 
     pad = _generate_pad_track(
         sections=structure.sections,
         bars_per_section=structure.bars_per_section,
         bpm=bpm,
         harmony=harmony,
-        narrative=state.get("narrative"),
+        intent_map=intent_map,
     )
 
     existing = [t for t in state.get("tracks", []) if t.id != "pad"]

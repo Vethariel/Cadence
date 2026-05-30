@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 
+from cadence.music.narrative_contract import contract_section_intent_map
 from cadence.schemas.song_state import LayerSpec, SongState
 
 
@@ -17,10 +18,12 @@ class ComposeContext:
     def active_sections(self) -> list[str]:
         """Secciones donde esta capa puede sonar (filtradas por layer spec)."""
         structure = self.state["structure"]
-        narrative = self.state.get("narrative")
-        intent_map = {}
-        if narrative:
-            intent_map = {s.id: s for s in narrative.sections}
+        intent_map = contract_section_intent_map(
+            self.state.get("narrative"),
+            self.state.get("narrative_contract"),
+            context=f"compose_context:{self.layer.instrument_id}",
+            state=self.state,
+        )
 
         spec_sections = self.layer.active_sections
         all_sections = list(structure.sections)

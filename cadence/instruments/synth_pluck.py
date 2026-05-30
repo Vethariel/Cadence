@@ -1,7 +1,8 @@
 """Plucks rítmicos de una nota — raíz del acorde, capa de groove."""
 
-from cadence.agent.nodes.narrative_apply import section_intent_map
 from cadence.instruments.context import ComposeContext
+from cadence.music.narrative_contract import section_intent_map_from_state
+from cadence.music.seed_policy import seed_for_state
 from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.music.harmony_theory import chord_at_bar, chord_pitches, section_harmony_map
 from cadence.music.instrument_patterns import pluck_steps
@@ -18,12 +19,11 @@ def _compose_synth_pluck(ctx: ComposeContext) -> Track | None:
         return None
 
     structure = ctx.state["structure"]
-    narrative = ctx.state.get("narrative")
-    intent_map = section_intent_map(narrative)
+    intent_map = section_intent_map_from_state(ctx.state, context="synth_pluck")
     harmony_map = section_harmony_map(harmony)
     active = set(ctx.active_sections())
     strategies = ctx.state.get("strategies")
-    seed = ctx.state.get("generation_seed", 0)
+    seed = seed_for_state(ctx.state, "synth_pluck") or ctx.state.get("generation_seed", 0)
     pluck_pattern = strategies.pluck_pattern if strategies else None
     steps = pluck_steps(pluck_pattern, seed)
 

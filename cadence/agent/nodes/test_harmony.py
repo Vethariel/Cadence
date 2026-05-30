@@ -11,6 +11,7 @@ from cadence.schemas.song_state import (
 )
 from cadence.agent.nodes.harmony import harmony_planner_node
 from cadence.agent.nodes.pad import _generate_pad_track, pad_composer_node
+from cadence.music.narrative_contract import contract_section_intent_map
 from cadence.agent.nodes.rhythm import _generate_bass_track
 from cadence.music.harmony_theory import (
     build_harmony_plan,
@@ -82,7 +83,7 @@ def test_bass_follows_chord_roots():
         bpm=120,
         key="F",
         mode="minor",
-        narrative=state["narrative"],
+        intent_map=contract_section_intent_map(state["narrative"], None),
         harmony=harmony,
     )
     drop_notes = [e for e in bass.events if e.section == "drop"]
@@ -100,7 +101,7 @@ def test_pad_skips_sparse_breakdown():
         bars_per_section=state["structure"].bars_per_section,
         bpm=120,
         harmony=harmony,
-        narrative=state["narrative"],
+        intent_map=contract_section_intent_map(state["narrative"], None),
     )
     breakdown_chords = [e for e in pad.events if e.section == "breakdown"]
     intro_chords = [e for e in pad.events if e.section == "intro"]

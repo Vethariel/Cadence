@@ -122,6 +122,109 @@ class SongNarrative(BaseModel):
         description="Grados de escala 0-6 del motivo principal (opcional, 3-5 grados).",
     )
 
+
+class NarrativeContract(BaseModel):
+    """
+    Contrato narrativo inmutable por solicitud — source of truth intra-request.
+    Generado tras narrative_planner; los nodos downstream no pueden desviarse.
+    """
+    section_ids: list[str] = Field(
+        description="IDs canónicos de sección en orden dramático.",
+    )
+    arc_type: str = Field(
+        description="Arco narrativo acordado para esta solicitud.",
+    )
+    global_motif: list[int] = Field(
+        default_factory=list,
+        description="Motivo global (grados 0-6) fijado en el contrato.",
+    )
+    prompt_intent_signature: str = Field(
+        description="Huella de la solicitud (prompt + use_case + mood + tags).",
+    )
+
+
+class SectionAlignment(BaseModel):
+    """Registro de reconciliación structure_planner ↔ contrato narrativo."""
+    planner_section_ids: list[str] = Field(default_factory=list)
+    mapping: dict[str, str] = Field(
+        default_factory=dict,
+        description="planner_section_id → canonical section_id",
+    )
+    method: str = Field(
+        default="exact",
+        description="exact | normalized | normalized_reorder | positional",
+    )
+    realigned: bool = False
+
+
+class SectionNarrativeAnchor(BaseModel):
+    """Ancla dramática por sección — baja variación, no editable por nodos creativos."""
+    section_id: str
+    narrative_role: str
+    density: float = Field(ge=0.0, le=1.0)
+    harmonic_tension: float = Field(ge=0.0, le=1.0)
+    rhythmic_complexity: float = Field(ge=0.0, le=1.0)
+    emotional_target: str = ""
+    is_key_section: bool = False
+    melody_coverage_min: float = Field(
+        ge=0.0, le=1.0,
+        description="Cobertura melódica mínima esperada en la sección.",
+    )
+
+
+class NarrativeAnchors(BaseModel):
+    """
+    Anclas narrativas intra-request — arco, tensión-release y densidad por sección.
+    Source of truth para límites de nodos creativos.
+    """
+    arc_type: str
+    global_motif: list[int] = Field(default_factory=list)
+    section_ids: list[str] = Field(default_factory=list)
+    sections: list[SectionNarrativeAnchor] = Field(default_factory=list)
+    tension_release_curve: list[float] = Field(
+        default_factory=list,
+        description="Tensión relativa 0-1 por sección, alineada a section_ids.",
+    )
+    key_section_ids: list[str] = Field(default_factory=list)
+
+
+class CreativeVariationBounds(BaseModel):
+    """
+    Límites de variación creativa — timbres, patrones, adornos, microfraseo.
+    Solo puede variar dentro de narrative_anchors.
+    """
+    max_optional_layers: int = Field(ge=0, le=8, default=4)
+    max_lead_optionals: int = Field(ge=0, le=4, default=2)
+    allowed_optional_layers: list[str] = Field(default_factory=list)
+    pattern_variance: float = Field(ge=0.0, le=1.0, default=0.5)
+    micro_phrase_variance: float = Field(ge=0.0, le=1.0, default=0.5)
+    fill_density: float = Field(ge=0.0, le=1.0, default=0.4)
+    timbre_variance: float = Field(ge=0.0, le=1.0, default=0.5)
+    secondary_motif_variance: float = Field(ge=0.0, le=1.0, default=0.4)
+    generation_seed: int = 0
+
+
+class NodeSeeds(BaseModel):
+    """Subsemillas derivadas de generation_seed por nodo del grafo."""
+    generation_seed: int = 0
+    seed_router: int = 0
+    seed_tag_enricher: int = 0
+    seed_technical_proposal: int = 0
+    seed_technical_parser: int = 0
+    seed_narrative_planner: int = 0
+    seed_structure_planner: int = 0
+    seed_strategy_planner: int = 0
+    seed_harmony_planner: int = 0
+    seed_development_planner: int = 0
+    seed_instrument_planner: int = 0
+    seed_style_coherence: int = 0
+    seed_arrangement_planner: int = 0
+    seed_melody: int = 0
+    seed_melody_repair: int = 0
+    seed_humanize: int = 0
+    seed_layer_schedule: int = 0
+
+
 class ChordSpec(BaseModel):
     """Un acorde expresado como grado de escala + calidad."""
     root_degree: int = Field(ge=0, le=6, description="Grado de escala 0-6 como raíz.")
@@ -338,6 +441,12 @@ class SongState(MessagesState):
 
     # — Planificación
     narrative: Optional[SongNarrative] = None
+    narrative_contract: Optional[NarrativeContract] = None
+    section_alignment: Optional[SectionAlignment] = None
+    narrative_anchors: Optional[NarrativeAnchors] = None
+    creative_variation: Optional[CreativeVariationBounds] = None
+    node_seeds: Optional[NodeSeeds] = None
+    composition_archetype: Optional[str] = None
     structure: Optional[SongStructure] = None
     harmony: Optional[HarmonyPlan] = None
     development: Optional[DevelopmentPlan] = None
@@ -356,6 +465,11 @@ class SongState(MessagesState):
     retry_count: int = 0
     repair_target: Optional[str] = None
     repair_layers: Optional[list[str]] = None
+    repair_actions: Optional[list[str]] = None
+
+    # — Observabilidad
+    request_id: Optional[str] = None
+    pipeline_trace: Optional[list[dict]] = None
 
     # — Exportación
     export_path: Optional[str] = None

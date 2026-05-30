@@ -9,8 +9,8 @@ from cadence.agent.nodes.narrative_apply import (
     melody_rest_ratio,
     melody_should_play,
     narrative_melody_hint,
-    section_intent_map,
 )
+from cadence.music.narrative_contract import section_intent_map_from_state
 from cadence.music.harmony_theory import (
     chord_tones_as_degrees,
     harmony_summary_for_section,
@@ -18,6 +18,11 @@ from cadence.music.harmony_theory import (
 )
 from cadence.music.development_theory import section_development_map
 from cadence.music.melody_phrases import phrases_to_events, fix_phrase_steps
+from cadence.music.narrative_anchors import format_anchors_for_llm
+from cadence.music.creative_variation import format_variation_for_llm
+from cadence.music.seed_policy import node_temperature, seed_for_state
+from cadence.music.section_refs import format_section_ids_for_llm
+from cadence.music.style_archetype import get_composition_archetype
 
 
 # ── Escalas ───────────────────────────────────────────────────
@@ -132,7 +137,9 @@ def compose_melody_track(state: SongState) -> Track:
     narrative: SongNarrative | None = state.get("narrative")
     harmony = state.get("harmony")
     development = state.get("development")
-    intent_map = section_intent_map(narrative)
+    seed = seed_for_state(state, "melody") or state.get("generation_seed", 0)
+    intent_map = section_intent_map_from_state(state, context="melody")
+    phrase_variant = seed % 8
     dev_map = section_development_map(development)
 
     if proposal:
@@ -151,7 +158,8 @@ def compose_melody_track(state: SongState) -> Track:
     scale_pitches = _get_scale_pitches(key, mode)
 
     repair_context = ""
-    temperature = 0.85
+    retry_n = state.get("retry_count", 0)
+    temperature = node_temperature("melody", repair_attempt=retry_n)
     variety_hint = (
         "\n- OBLIGATORIO: cada frase debe sumar exactamente bars*16 steps.\n"
         "- OBLIGATORIO: frase 2 (respuesta) debe diferir de frase 1 en "
@@ -161,6 +169,8 @@ def compose_melody_track(state: SongState) -> Track:
         "- En drop/climax/build-up: máximo 10% silencios (is_rest).\n"
         "- En secciones density>=0.7: frases de 2 compases, notas de 1-2 steps.\n"
         "- Registro objetivo C4–C6 (octave_offset 0 o +1 en climax)."
+        f"\n- Variante melódica (subsemilla {phrase_variant}): "
+        f"contorno {'ascendente' if phrase_variant % 2 else 'ondulante'} en frases de respuesta."
     )
 
     if validation and not validation.passed and state.get("retry_count", 0) > 0:
@@ -171,7 +181,7 @@ def compose_melody_track(state: SongState) -> Track:
             f"Errores:\n{errors_str}\n"
         )
         if "melody_variety" in failed or "melody_loop" in failed:
-            temperature = min(1.0, 0.85 + state.get("retry_count", 0) * 0.1)
+            temperature = node_temperature("melody", repair_attempt=retry_n + 1)
             variety_hint += (
                 "\n- OBLIGATORIO: mínimo 5 scale_degree distintos por sección."
             )
@@ -216,6 +226,24 @@ def compose_melody_track(state: SongState) -> Track:
 
     dev_block = _development_hint(state)
 
+    archetype = get_composition_archetype(state)
+    archetype_hint = ""
+    if archetype == "chiptune_dance":
+        archetype_hint = (
+            "\nArquetipo CHIPTUNE/DANCE: melodía muy densa (≥6-8 notas/compás en climax), "
+            "notas cortas (1-2 steps), saltos de hasta 7 semitonos, silencios ≤6%.\n"
+        )
+    elif archetype == "compact_action":
+        archetype_hint = (
+            "\nArquetipo COMPACTO: melodía directa y urgente, pocos silencios (≤10%), "
+            "frases cortas; no rellenes con arpegios orquestales.\n"
+        )
+    elif archetype == "orchestral_boss":
+        archetype_hint = (
+            "\nArquetipo ORQUESTAL: melodía protagonista con densidad moderada, "
+            "frases expresivas; silencios ≤15% en climax.\n"
+        )
+
     harmonic_stack_hint = ""
     plan = state.get("orchestration_plan")
     if plan and proposal:
@@ -248,7 +276,9 @@ def compose_melody_track(state: SongState) -> Track:
             if section_intent and section_intent.density >= 0.7:
                 bars = min(bars, 2)
             rest_pct = int(melody_rest_ratio(
-                section_intent, use_case=intent.use_case,
+                section_intent,
+                use_case=intent.use_case,
+                composition_archetype=archetype,
             ) * 100)
             seg_note = (
                 f", {len(dev.segments)} micro-arcos" if dev.segments else ""
@@ -267,7 +297,11 @@ def compose_melody_track(state: SongState) -> Track:
         "- Respuesta: desciende o resuelve a tónica/grado 0\n"
         "- Drop/climax: notas cortas (1-2 steps), denso, pocos silencios\n"
         "- Breakdown: silencios permitidos pero no más del 30%\n"
-        f"{harmony_block}{dev_block}{narrative_block}{harmonic_stack_hint}"
+        f"{harmony_block}{dev_block}{narrative_block}{archetype_hint}\n"
+        f"{format_section_ids_for_llm(state)}\n"
+        f"{format_anchors_for_llm(state.get('narrative_anchors'))}\n"
+        f"{format_variation_for_llm(state.get('creative_variation'))}\n"
+        f"{harmonic_stack_hint}"
         f"Longitud sugerida:\n" + "\n".join(phrase_hints) + "\n"
         f"{variety_hint}\n"
         "Responde SOLO con el objeto estructurado."
@@ -276,7 +310,7 @@ def compose_melody_track(state: SongState) -> Track:
     human = HumanMessage(content=(
         f"Canción: {key} {mode} | {bpm} BPM | Géneros: {', '.join(genre_tags)}\n"
         f"Mood: {intent.mood} | Energía: {energy_level}/5\n"
-        f"Secciones: {structure.sections}\n"
+        f"{format_section_ids_for_llm(state, include_instruction=False)}\n"
         f"Grados 0-6 (tónica=0 … séptima=6)\n"
         f"{repair_context}"
     ))

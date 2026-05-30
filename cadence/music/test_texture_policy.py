@@ -20,6 +20,9 @@ from cadence.music.harmony_theory import build_harmony_plan
 def test_infer_bedded_for_loop():
     assert infer_texture_mode(use_case="loop", energy_level=1) == "bedded"
     assert infer_texture_mode(use_case="cutscene", energy_level=3) == "bedded"
+    assert infer_texture_mode(
+        use_case="game", energy_level=4, composition_archetype="compact_action",
+    ) == "compact"
     print("✓ test_infer_bedded_for_loop OK")
 
 

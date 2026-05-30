@@ -1,7 +1,8 @@
 """Arpeggio determinista sobre acordes — capa Spider Dance / Bad Apple."""
 
-from cadence.agent.nodes.narrative_apply import section_intent_map
 from cadence.instruments.context import ComposeContext
+from cadence.music.narrative_contract import section_intent_map_from_state
+from cadence.music.seed_policy import seed_for_state
 from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.music.arp_patterns import generate_bar_arp, resolve_arp_pattern, steps_per_note
 from cadence.music.harmony_theory import chord_at_bar, chord_pitches, section_harmony_map
@@ -18,13 +19,12 @@ def _compose_arp_synth(ctx: ComposeContext) -> Track | None:
         return None
 
     structure = ctx.state["structure"]
-    narrative = ctx.state.get("narrative")
-    intent_map = section_intent_map(narrative)
+    intent_map = section_intent_map_from_state(ctx.state, context="arp_synth")
     harmony_map = section_harmony_map(harmony)
     active = set(ctx.active_sections())
 
     strategies = ctx.state.get("strategies")
-    seed = ctx.state.get("generation_seed", 0)
+    seed = seed_for_state(ctx.state, "arp_synth") or ctx.state.get("generation_seed", 0)
     raw_pattern = strategies.arp_pattern if strategies else None
     pattern = resolve_arp_pattern(raw_pattern, seed)
 

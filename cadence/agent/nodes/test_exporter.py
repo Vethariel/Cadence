@@ -55,6 +55,8 @@ def test_exporter():
             score=1.0, errors=[], warnings=[], passed=True
         ),
         "retry_count": 0,
+        "request_id": "test-export-req",
+        "pipeline_trace": [],
         "export_path": None,
         "rsong_data": None,
     }
@@ -86,6 +88,12 @@ def test_exporter():
     assert loaded["game_meta"]["loop_point_ms"] >= 0
     assert len(loaded["game_meta"]["intensity_curve"]) == 3
     assert len(loaded["game_meta"]["cue_points"]) == 3
+    assert loaded["quality"]["quality_status"] == "passed"
+    assert loaded["quality"]["request_id"] == "test-export-req"
+    assert loaded["quality"]["generation_seed"] == 0
+    assert loaded["quality"]["retry_count"] == 0
+    assert "failed_checks" in loaded["quality"]
+    assert loaded["validation"]["passed"] is True
 
     print("✓ test_exporter OK")
 

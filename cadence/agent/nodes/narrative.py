@@ -2,6 +2,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from cadence.config import settings
+from cadence.music.seed_policy import node_temperature
 from cadence.schemas.song_state import SongState, SongNarrative
 
 
@@ -24,7 +25,7 @@ def narrative_planner_node(state: SongState) -> dict:
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
         google_api_key=settings.google_api_key,
-        temperature=0.4,
+        temperature=node_temperature("narrative_planner"),
     ).with_structured_output(SongNarrative)
 
     system = SystemMessage(content=(

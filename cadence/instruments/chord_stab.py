@@ -1,7 +1,8 @@
 """Stabs de acorde en offbeats — capa determinista de densidad armónica."""
 
-from cadence.agent.nodes.narrative_apply import section_intent_map
 from cadence.instruments.context import ComposeContext
+from cadence.music.narrative_contract import section_intent_map_from_state
+from cadence.music.seed_policy import seed_for_state
 from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.music.harmony_theory import chord_at_bar, chord_pitches, section_harmony_map
 from cadence.music.instrument_patterns import stab_steps
@@ -18,12 +19,11 @@ def _compose_chord_stab(ctx: ComposeContext) -> Track | None:
         return None
 
     structure = ctx.state["structure"]
-    narrative = ctx.state.get("narrative")
-    intent_map = section_intent_map(narrative)
+    intent_map = section_intent_map_from_state(ctx.state, context="chord_stab")
     harmony_map = section_harmony_map(harmony)
     active = set(ctx.active_sections())
     strategies = ctx.state.get("strategies")
-    seed = ctx.state.get("generation_seed", 0)
+    seed = seed_for_state(ctx.state, "chord_stab") or ctx.state.get("generation_seed", 0)
     stab_pattern = strategies.stab_pattern if strategies else None
     stab_step_pattern = stab_steps(stab_pattern, seed)
 

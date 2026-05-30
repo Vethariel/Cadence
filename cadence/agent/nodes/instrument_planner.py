@@ -4,6 +4,11 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from cadence.config import settings
+from cadence.music.narrative_anchors import format_anchors_for_llm
+from cadence.music.creative_variation import format_variation_for_llm
+from cadence.music.section_refs import format_section_ids_for_llm
+from cadence.music.style_archetype import get_composition_archetype
+from cadence.music.seed_policy import node_temperature, seed_for_state
 from cadence.music.arp_patterns import ARP_PATTERNS
 from cadence.music.instrument_catalog import (
     CORE_INSTRUMENTS,
@@ -98,7 +103,7 @@ def instrument_planner_node(state: SongState) -> dict:
     profile = state.get("style_profile")
     narrative = state.get("narrative")
     strategies = state.get("strategies")
-    seed = state.get("generation_seed", 0)
+    seed = seed_for_state(state, "instrument_planner") or state.get("generation_seed", 0)
     coherence = state.get("style_coherence")
     retries = state.get("style_coherence_retries", 0)
 
@@ -110,14 +115,19 @@ def instrument_planner_node(state: SongState) -> dict:
         raise ValueError("instrument_planner requiere technical_proposal")
 
     genre_tags = ", ".join(proposal.genre_tags)
-    sections = ", ".join(proposal.structure)
+    structure = state.get("structure")
+    contract = state.get("narrative_contract")
     logline = narrative.logline if narrative else ""
-    arc = narrative.arc_type if narrative else ""
+    arc = (
+        contract.arc_type if contract
+        else (narrative.arc_type if narrative else "")
+    )
+    archetype = get_composition_archetype(state)
 
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
         google_api_key=settings.google_api_key,
-        temperature=0.75,
+        temperature=node_temperature("instrument_planner"),
     ).with_structured_output(_AgentOrchestrationOutput)
 
     catalog = format_catalog_for_llm()
@@ -153,7 +163,9 @@ def instrument_planner_node(state: SongState) -> dict:
         "- echo_source: auto | melody | arp_synth | chord_stab (eco de esa capa; "
         "auto = primera con notas).\n"
         "- Si activas chord_stab → stab_pattern. perc_aux → perc_pattern. "
-        "synth_pluck → pluck_pattern. countermelody → counter_pattern.\n\n"
+        "synth_pluck → pluck_pattern. countermelody → counter_pattern.\n"
+        "- active_sections y planificación: usa EXACTAMENTE los section IDs canónicos "
+        "indicados en el mensaje humano.\n\n"
         "Responde SOLO con el objeto estructurado."
     ))
 
@@ -177,9 +189,15 @@ def instrument_planner_node(state: SongState) -> dict:
         f"Uso: {intent.use_case} | Mood: {intent.mood}",
         f"Géneros: {genre_tags} | Energía: {proposal.energy_level}/5",
         f"Key: {proposal.key} {proposal.mode} | BPM: {proposal.bpm}",
-        f"Secciones: {sections}",
+        f"Arquetipo compositivo: {archetype}",
         f"Narrativa: {logline} (arco: {arc})",
         dev_hint,
+        "",
+        format_section_ids_for_llm(state),
+        "",
+        format_anchors_for_llm(state.get("narrative_anchors")),
+        "",
+        format_variation_for_llm(state.get("creative_variation")),
         "",
         format_profile_for_llm(profile),
         "",
@@ -212,6 +230,9 @@ def instrument_planner_node(state: SongState) -> dict:
         generation_seed=seed,
         style_profile=profile,
         strategies=strategies,
+        raw_prompt=intent.raw_prompt,
+        creative_variation=state.get("creative_variation"),
+        composition_archetype=archetype,
     )
 
     return {

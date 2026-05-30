@@ -1,5 +1,6 @@
 from langchain_core.messages import HumanMessage
-from cadence.schemas.song_state import UserIntent, TechnicalProposal
+from cadence.schemas.song_state import UserIntent, TechnicalProposal, SongNarrative, SectionIntent
+from cadence.music.narrative_contract import build_narrative_contract
 from cadence.agent.nodes.planner import structure_planner_node
 
 def test_planner_non_technical():
@@ -23,6 +24,22 @@ def test_planner_non_technical():
             reasoning="Un BPM de 145 aporta urgencia para un jefe final...",
         ),
         "structure": None,
+        "narrative": SongNarrative(
+            logline="boss fight",
+            arc_type="rise-climax-fall",
+            sections=[
+                SectionIntent(
+                    id=s,
+                    narrative_role="establish" if s == "intro" else "tension",
+                    emotional_target="urgency",
+                    density=0.7,
+                    harmonic_tension=0.6,
+                    rhythmic_complexity=0.5,
+                )
+                for s in ["intro", "build-up", "drop", "breakdown", "climax", "outro"]
+            ],
+            global_motif=[0, 2, 4],
+        ),
         "tracks": [],
         "validation_result": None,
         "retry_count": 0,
@@ -30,6 +47,9 @@ def test_planner_non_technical():
         "rsong_data": None,
     }
 
+    state["narrative_contract"] = build_narrative_contract(
+        state["narrative"], state["intent"],
+    )
     result = structure_planner_node(state)
     structure = result["structure"]
 
@@ -38,6 +58,8 @@ def test_planner_non_technical():
     print(f"total_bars       : {structure.total_bars}")
     print(f"duration_ms      : {structure.estimated_duration_ms}")
 
+    contract = state["narrative_contract"]
+    assert structure.sections == contract.section_ids
     assert len(structure.sections) >= 2
     assert set(structure.sections) == set(structure.bars_per_section.keys()), \
         f"Mismatch secciones: {structure.sections} vs {list(structure.bars_per_section.keys())}"
