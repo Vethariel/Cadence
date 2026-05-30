@@ -508,7 +508,12 @@ def pick_archetype_timbre(
     if not candidates:
         candidates = [p for p, _ in allowed]
 
-    idx = (generation_seed // (37 + hash(instrument_id) % 97)) % len(candidates)
+    arch_key = arch or "default_game"
+    idx = (
+        generation_seed * 31
+        + hash(instrument_id) % 997
+        + hash(arch_key) % 503
+    ) % len(candidates)
     prog = candidates[idx]
     name = next((n for p, n in allowed if p == prog), gm_name(prog))
     return prog, name

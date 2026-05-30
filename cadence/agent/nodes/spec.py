@@ -37,11 +37,16 @@ def technical_spec_node(state: SongState) -> dict:
         raise ValueError("technical_spec requiere creative_brief del prompt_enhancer")
 
     use_case = brief.use_case
+    from cadence.music.strategy_pools import compute_generation_seed
+
+    seed_guess = compute_generation_seed(raw, 0)
     suggested = suggest_forms(
         use_case=use_case,
         genre_tags=[],
         energy_level=3,
         brief=brief,
+        raw_prompt=raw,
+        generation_seed=seed_guess,
     )
     catalog = format_genre_catalog_for_llm()
     form_catalog = format_structure_catalog_for_llm(suggested=suggested)
@@ -50,6 +55,8 @@ def technical_spec_node(state: SongState) -> dict:
         genre_tags=[],
         energy_level=3,
         brief=brief,
+        raw_prompt=raw,
+        generation_seed=seed_guess,
     )
     genre_hints = list(brief.style_hints) + list(brief.mood_keywords)
     energy_guess = 3

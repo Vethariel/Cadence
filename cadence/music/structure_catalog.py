@@ -276,6 +276,7 @@ def score_form(
     use_case: str,
     genre_tags: list[str],
     energy_level: int,
+    composition_archetype: str | None = None,
 ) -> float:
     spec = STRUCTURE_FORMS.get(form_id)
     if not spec:
@@ -292,6 +293,10 @@ def score_form(
     elow, ehigh = spec["energy_range"]
     if elow <= energy_level <= ehigh:
         score += 1.5
+    if composition_archetype:
+        from cadence.music.archetype_diversity import archetype_form_score_bonus
+
+        score += archetype_form_score_bonus(form_id, composition_archetype)
     return score
 
 
@@ -302,6 +307,9 @@ def suggest_forms(
     energy_level: int = 3,
     brief: CreativeBrief | None = None,
     limit: int = 4,
+    composition_archetype: str | None = None,
+    raw_prompt: str = "",
+    generation_seed: int = 0,
 ) -> list[str]:
     """Formas recomendadas para el prompt del technical_spec."""
     uc = (brief.use_case if brief else use_case) or "game"
@@ -310,27 +318,69 @@ def suggest_forms(
         tags.extend(brief.style_hints)
         tags.extend(brief.mood_keywords)
 
+    arch = composition_archetype
+    if not arch:
+        from cadence.music.archetype_diversity import (
+            archetype_from_tag_hints,
+            infer_archetype_for_planning,
+        )
+
+        arch = archetype_from_tag_hints(tags)
+    if not arch:
+        arch = infer_archetype_for_planning(
+            raw_prompt=raw_prompt,
+            use_case=uc,
+            energy_level=energy_level,
+            genre_tags=tags,
+            style_hints=brief.style_hints if brief else None,
+        )
+
     arc_form = _form_from_arc(brief.emotional_arc if brief else "")
     if arc_form:
         return [arc_form] + [
             f for f in sorted(
                 STRUCTURE_FORMS.keys(),
                 key=lambda fid: score_form(
-                    fid, use_case=uc, genre_tags=tags, energy_level=energy_level,
+                    fid,
+                    use_case=uc,
+                    genre_tags=tags,
+                    energy_level=energy_level,
+                    composition_archetype=arch,
                 ),
                 reverse=True,
             )
             if f != arc_form
         ][:limit]
 
+    from cadence.music.archetype_diversity import (
+        pick_structure_form_for_archetype,
+        valid_archetype_forms,
+    )
+
+    archetype_first = pick_structure_form_for_archetype(arch, generation_seed)
     ranked = sorted(
         STRUCTURE_FORMS.keys(),
         key=lambda fid: score_form(
-            fid, use_case=uc, genre_tags=tags, energy_level=energy_level,
+            fid,
+            use_case=uc,
+            genre_tags=tags,
+            energy_level=energy_level,
+            composition_archetype=arch,
         ),
         reverse=True,
     )
-    return ranked[:limit]
+    out: list[str] = []
+    if archetype_first and archetype_first not in out:
+        out.append(archetype_first)
+    for fid in valid_archetype_forms(arch):
+        if fid not in out:
+            out.append(fid)
+    for fid in ranked:
+        if fid not in out:
+            out.append(fid)
+        if len(out) >= limit:
+            break
+    return out[:limit]
 
 
 def _form_from_arc(emotional_arc: str) -> str | None:
@@ -425,12 +475,16 @@ def format_structure_hints_for_spec(
     genre_tags: list[str],
     energy_level: int,
     brief: CreativeBrief | None,
+    raw_prompt: str = "",
+    generation_seed: int = 0,
 ) -> str:
     suggested = suggest_forms(
         use_case=use_case,
         genre_tags=genre_tags,
         energy_level=energy_level,
         brief=brief,
+        raw_prompt=raw_prompt,
+        generation_seed=generation_seed,
     )
     uc = (brief.use_case if brief else use_case) or "game"
     dur = _DURATION_BY_USE_CASE.get(uc, (36, 72))
@@ -450,6 +504,8 @@ def _pick_form_id(
     proposal: TechnicalProposal,
     intent: UserIntent,
     brief: CreativeBrief | None,
+    *,
+    generation_seed: int = 0,
 ) -> str | None:
     raw_form = (getattr(proposal, "structure_form", None) or "").strip().lower()
     if is_valid_form_id(raw_form):
@@ -463,10 +519,23 @@ def _pick_form_id(
         )
         return fid
 
+    from cadence.music.archetype_diversity import infer_archetype_for_planning
+
+    arch = infer_archetype_for_planning(
+        raw_prompt=intent.raw_prompt,
+        use_case=intent.use_case,
+        energy_level=proposal.energy_level,
+        genre_tags=proposal.genre_tags,
+        style_hints=brief.style_hints if brief else None,
+    )
     suggested = suggest_forms(
         use_case=intent.use_case,
         genre_tags=proposal.genre_tags,
         energy_level=proposal.energy_level,
+        brief=brief,
+        composition_archetype=arch,
+        raw_prompt=intent.raw_prompt,
+        generation_seed=generation_seed,
     )
     return suggested[0] if suggested else "game_standard"
 
@@ -477,6 +546,7 @@ def resolve_proposal_structure(
     *,
     narrative_contract: NarrativeContract | None = None,
     creative_brief: CreativeBrief | None = None,
+    generation_seed: int = 0,
 ) -> TechnicalProposal:
     """
     Resuelve section_ids finales: prompt explícito > LLM > form_id > brief > fallback.
@@ -502,7 +572,9 @@ def resolve_proposal_structure(
             note = f"structure from structure_form={raw_form}"
             form_id = raw_form
         elif is_generic_pop_structure(proposal.structure) or not proposal.structure:
-            form_id = _pick_form_id(proposal, intent, creative_brief)
+            form_id = _pick_form_id(
+                proposal, intent, creative_brief, generation_seed=generation_seed,
+            )
             structure = expand_form(form_id or "game_standard")
             note = f"structure from catalog form={form_id}"
         else:
@@ -511,7 +583,9 @@ def resolve_proposal_structure(
             form_id = raw_form if is_valid_form_id(raw_form) else None
 
     if len(structure) < 2:
-        form_id = _pick_form_id(proposal, intent, creative_brief)
+        form_id = _pick_form_id(
+            proposal, intent, creative_brief, generation_seed=generation_seed,
+        )
         structure = expand_form(form_id or "game_standard")
         note = f"structure fallback form={form_id}"
 

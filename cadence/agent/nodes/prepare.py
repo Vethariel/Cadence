@@ -31,6 +31,9 @@ def prepare_pipeline_node(state: SongState) -> dict:
             break
 
     brief = state.get("creative_brief")
+    seed_text = combined_prompt_text(raw, brief)
+    seed = compute_generation_seed(seed_text, 0)
+
     intent = resolve_intent_from_prompt(
         raw,
         llm_style_tags=proposal.genre_tags,
@@ -42,7 +45,7 @@ def prepare_pipeline_node(state: SongState) -> dict:
     merged_tags = merge_proposal_genre_tags(proposal.genre_tags, profile)
     proposal = proposal.model_copy(update={"genre_tags": merged_tags})
     proposal = resolve_proposal_structure(
-        proposal, intent, creative_brief=brief,
+        proposal, intent, creative_brief=brief, generation_seed=seed,
     )
     proposal = normalize_technical_proposal_instruments(proposal, intent)
     proposal = normalize_technical_proposal_composition(proposal)
@@ -57,8 +60,6 @@ def prepare_pipeline_node(state: SongState) -> dict:
             update={"instrumentation": inst_labels[:12]},
         )
 
-    seed_text = combined_prompt_text(raw, brief)
-    seed = compute_generation_seed(seed_text, 0)
     proposal, _ = apply_tonal_policy_to_proposal(proposal, intent, seed=seed)
 
     return {

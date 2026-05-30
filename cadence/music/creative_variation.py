@@ -4,13 +4,9 @@ Límites de variación creativa — alta variación dentro de anclas narrativas.
 
 from __future__ import annotations
 
+from cadence.music.composition_archetypes import normalize_archetype
 from cadence.music.repertoire_signals import max_optional_budget
 from cadence.schemas.song_state import CreativeVariationBounds, NarrativeAnchors
-
-OPTIONAL_LAYER_POOL = (
-    "pad", "countermelody", "echo_synth", "arp_synth",
-    "chord_stab", "synth_pluck", "perc_aux", "fx_riser",
-)
 
 
 def build_creative_variation_bounds(
@@ -25,45 +21,35 @@ def build_creative_variation_bounds(
     Deriva cuánta libertad tienen timbres, patrones y microfraseo
     sin romper narrative_anchors.
     """
+    arch = normalize_archetype(composition_archetype or "")
     max_opt, max_lead = max_optional_budget(
-        use_case, energy_level, composition_archetype=composition_archetype,
+        use_case, energy_level, composition_archetype=arch,
     )
-    arch = composition_archetype or ""
     avg_density = sum(a.density for a in anchors.sections) / max(1, len(anchors.sections))
 
-    if arch == "compact_action":
-        max_opt = min(max_opt, 3)
-        max_lead = 1
-        pattern_var = 0.35
-        micro_var = 0.45
-        fill_var = 0.30
-        timbre_var = 0.40
-    elif arch == "chiptune_dance":
-        max_opt = min(max_opt + 1, 6)
-        max_lead = min(max_lead + 1, 3)
-        pattern_var = 0.85
-        micro_var = 0.90
-        fill_var = 0.75
-        timbre_var = 0.55
-    elif arch == "orchestral_boss":
-        max_opt = min(max_opt + 1, 6)
-        max_lead = min(max_lead + 1, 3)
-        pattern_var = 0.65
-        micro_var = 0.55
-        fill_var = 0.50
-        timbre_var = 0.70
-    elif (use_case or "game").lower() in ("loop", "cutscene"):
+    from cadence.music.archetype_diversity import (
+        optional_layer_pool_for_archetype,
+        pick_optional_layers_for_archetype,
+        variance_for_archetype,
+    )
+
+    var = variance_for_archetype(arch)
+    pattern_var = var["pattern"]
+    micro_var = var["micro"]
+    fill_var = var["fill"]
+    timbre_var = var["timbre"]
+
+    # Ajuste fino por energía dentro del arquetipo
+    if energy_level >= 5:
+        pattern_var = min(0.95, pattern_var + 0.06)
+        micro_var = min(0.95, micro_var + 0.05)
+    elif energy_level <= 2:
+        pattern_var = max(0.2, pattern_var - 0.08)
+        micro_var = max(0.2, micro_var - 0.06)
+
+    if (use_case or "game").lower() in ("loop", "cutscene"):
         max_opt = min(max_opt, 2)
         max_lead = min(max_lead, 1)
-        pattern_var = 0.30
-        micro_var = 0.35
-        fill_var = 0.20
-        timbre_var = 0.35
-    else:
-        pattern_var = 0.55 + (energy_level - 3) * 0.08
-        micro_var = 0.50 + avg_density * 0.35
-        fill_var = 0.40 + (energy_level - 3) * 0.06
-        timbre_var = 0.55
 
     pattern_var = max(0.2, min(0.95, pattern_var))
     micro_var = max(0.2, min(0.95, micro_var))
@@ -71,16 +57,21 @@ def build_creative_variation_bounds(
     timbre_var = max(0.2, min(0.90, timbre_var))
     secondary = min(0.85, 0.35 + micro_var * 0.45)
 
-    pool = list(OPTIONAL_LAYER_POOL)
+    pool = list(optional_layer_pool_for_archetype(arch))
     if energy_level <= 2:
-        pool = ["pad", "countermelody", "fx_riser"]
-    elif arch == "compact_action":
-        pool = ["pad", "countermelody", "echo_synth", "perc_aux"]
+        pool = [i for i in pool if i in ("pad", "countermelody", "fx_riser", "echo_synth")]
+    if not pool:
+        pool = ["pad", "countermelody", "echo_synth"]
+
+    rotated = pick_optional_layers_for_archetype(
+        arch, generation_seed=generation_seed, max_layers=max(max_opt, len(pool)),
+    )
+    allowed_layers = tuple(dict.fromkeys(rotated + [i for i in pool if i not in rotated]))
 
     return CreativeVariationBounds(
         max_optional_layers=max_opt,
         max_lead_optionals=max_lead,
-        allowed_optional_layers=pool,
+        allowed_optional_layers=allowed_layers,
         pattern_variance=round(pattern_var, 3),
         micro_phrase_variance=round(micro_var, 3),
         fill_density=round(fill_var, 3),
