@@ -84,10 +84,20 @@ def test_compact_caps_ensemble_families():
         energy_level=5,
         generation_seed=42,
     )
-    assert len(fam) <= 2
-    assert "strings_ensemble" not in fam or len(fam) <= 2
-    print(f"  compact families: {sorted(fam)}")
+    assert fam == set()
     print("✓ test_compact_caps_ensemble_families OK")
+
+
+def test_energetic_game_suppresses_ensemble():
+    fam = select_ensemble_families(
+        genre_tags=["orchestral", "boss fight", "platform"],
+        composition_archetype="energetic_game",
+        use_case="game",
+        energy_level=4,
+        generation_seed=42,
+    )
+    assert fam == set()
+    print("✓ test_energetic_game_suppresses_ensemble OK")
 
 
 if __name__ == "__main__":
@@ -98,4 +108,5 @@ if __name__ == "__main__":
     test_guitar_replaces_pluck()
     test_folk_gets_guitars_or_keys()
     test_compact_caps_ensemble_families()
+    test_energetic_game_suppresses_ensemble()
     print("\n✓ All ensemble_policy tests passed")

@@ -31,7 +31,9 @@ def orchestral_stack_active(
     composition_archetype: str | None,
     energy_level: int = 3,
 ) -> bool:
-    return (composition_archetype or "") == "orchestral_boss" and energy_level >= 4
+    from cadence.music.composition_archetypes import normalize_archetype
+
+    return normalize_archetype(composition_archetype) == "orchestral_boss" and energy_level >= 4
 
 
 def effective_texture_mode_for_schedule(
@@ -77,7 +79,7 @@ def schedule_thresholds_orchestral(
         **base,
         "arp": min(0.92, base.get("arp", 0.55) + bump),
         "counter": min(0.88, base.get("counter", 0.45) + bump * 0.8),
-        "echo": min(0.90, base.get("echo", 0.45) + bump * 0.6),
+        "echo": max(0.38, base.get("echo", 0.45) - 0.06),
         "chord_stab": max(0.28, base.get("chord_stab", 0.42) - 0.06),
     }
 
@@ -165,7 +167,9 @@ def assign_orchestral_layer_sections(
             counter_sections.append(section_id)
         elif rot == "arp_synth" and density >= arp_floor:
             arp_sections.append(section_id)
-        elif rot == "echo_synth" and density >= echo_floor and role in CLIMAX_ROLES:
+        elif rot == "echo_synth" and density >= echo_floor and role in (
+            *CLIMAX_ROLES, "tension", "transition",
+        ):
             echo_sections.append(section_id)
 
         if (

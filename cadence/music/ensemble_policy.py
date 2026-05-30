@@ -79,10 +79,17 @@ def ensemble_score(
         policy_family,
     )
 
+    from cadence.music.composition_archetypes import suppresses_ensemble
+
     tags = _tags_lower(genre_tags)
     arch = normalize_archetype(composition_archetype) if composition_archetype else ""
     fam = policy_family(arch) if arch else "default"
     uc = (use_case or "game").lower()
+
+    if arch and suppresses_ensemble(arch):
+        if arch == "dense_dance" and _tag_overlap(tags, ORCHESTRAL_TAG_TOKENS) >= 0.35:
+            return min(0.32, _tag_overlap(tags, ORCHESTRAL_TAG_TOKENS) * 0.5)
+        return 0.0
 
     score = 0.0
     orch = _tag_overlap(tags, ORCHESTRAL_TAG_TOKENS)
@@ -112,19 +119,19 @@ def ensemble_score(
 
     if uc in ("game", "animation", "cutscene"):
         score += 0.1
-    if arch == "compact_action":
-        score *= 0.3
-    elif arch == "chiptune_dance" and orch < 0.2:
-        score *= 0.55
-    elif arch == "ambient_loop":
+    if matches_archetype(arch, "compact_action", "energetic_game"):
+        score *= 0.08
+    elif matches_archetype(arch, "dense_dance") and orch < 0.2:
+        score *= 0.35
+    elif matches_archetype(arch, "sparse_loop", "lofi_downtempo", "stealth_tension"):
         score *= 0.45
 
     if uc == "loop" and orch < 0.15:
         score *= 0.5
 
     # Techno puro sin señales orquestales/folk: no forzar ensemble
-    if dance >= 0.35 and orch < 0.12 and folk < 0.12 and arch not in (
-        "orchestral_boss", "cinematic_cutscene",
+    if dance >= 0.35 and orch < 0.12 and folk < 0.12 and not matches_archetype(
+        arch, "orchestral_boss", "moderate_cinematic", "hybrid_epic",
     ):
         score *= 0.45
 
@@ -174,8 +181,19 @@ def select_ensemble_families(
     ):
         return set()
 
+    from cadence.music.composition_archetypes import (
+        matches_archetype,
+        normalize_archetype,
+        suppresses_ensemble,
+    )
+
     tags = _tags_lower(genre_tags)
-    arch = (composition_archetype or "").lower()
+    arch = normalize_archetype(composition_archetype) if composition_archetype else ""
+    if arch and suppresses_ensemble(arch):
+        if arch == "dense_dance" and _tag_overlap(tags, ORCHESTRAL_TAG_TOKENS) >= 0.35:
+            n = 1
+        else:
+            return set()
     orch = _tag_overlap(tags, ORCHESTRAL_TAG_TOKENS)
     score = ensemble_score(
         genre_tags=genre_tags,
@@ -185,26 +203,28 @@ def select_ensemble_families(
         genre_mix=genre_mix,
     )
     n = max_ensemble_slots(energy_level, use_case, score)
-    if arch == "compact_action":
-        n = min(n, 2)
-    elif arch == "ambient_loop":
+    if matches_archetype(arch, "compact_action", "energetic_game"):
         n = min(n, 1)
-    elif arch == "chiptune_dance" and orch < 0.2:
+    elif matches_archetype(arch, "sparse_loop", "lofi_downtempo", "stealth_tension"):
+        n = min(n, 1)
+    elif matches_archetype(arch, "dense_dance") and orch < 0.2:
         n = min(n, 2)
-    elif arch == "cinematic_cutscene":
+    elif matches_archetype(arch, "moderate_cinematic"):
         n = min(n, 3)
     seed = generation_seed % 9973
 
     folk = _tag_overlap(tags, FOLK_JAZZ_TAG_TOKENS)
 
     priority: list[str] = []
-    if arch == "compact_action":
+    if matches_archetype(arch, "compact_action", "energetic_game"):
         priority.extend(["keys_piano", "woodwind_a"])
-    elif orch >= 0.15 or arch == "orchestral_boss":
+    elif orch >= 0.15 or matches_archetype(arch, "orchestral_boss", "hybrid_epic"):
         priority.extend(["strings_ensemble", "woodwind_a", "keys_piano", "brass_a"])
-    if folk >= 0.15 or arch == "cinematic_cutscene":
+    if folk >= 0.15 or matches_archetype(arch, "moderate_cinematic"):
         priority.extend(["keys_piano", "guitar_acoustic", "woodwind_a"])
-    if any(t in tags for t in ("organ", "church", "gothic", "cathedral")) or arch == "cinematic_cutscene":
+    if any(t in tags for t in ("organ", "church", "gothic", "cathedral")) or matches_archetype(
+        arch, "moderate_cinematic",
+    ):
         priority.append("keys_organ")
     if folk >= 0.2 or any(t in tags for t in ("rock", "metal", "distortion")):
         priority.append("guitar_electric")

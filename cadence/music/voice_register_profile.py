@@ -111,6 +111,10 @@ class VoiceRegisterProfile:
                 return 8 if energy_level >= 5 else 7
             return 7 if energy_level >= 4 else 6
         if tier == "moderate":
+            if self.composition_archetype == "moderate_cinematic":
+                if role in ("climax", "tension"):
+                    return 7 if energy_level >= 4 else 6
+                return 6 if energy_level >= 3 else 5
             if role in ("climax", "tension"):
                 return 5 if energy_level >= 5 else 4
             return 4 if energy_level >= 4 else 3
@@ -250,6 +254,12 @@ def _base_from_archetype(
     if arch == "menu_theme":
         tier: LeadDensityTier = "sparse" if energy_level <= 2 else "moderate"
         return tier, "legato", "quarter"
+    if arch == "moderate_cinematic":
+        return "moderate", "legato", "eighth"
+    if arch == "energetic_game":
+        if energy_level >= 4:
+            return "dense", "mixed", "eighth"
+        return "moderate", "mixed", "eighth"
     if fam == "dense":
         return "hyper", "staccato", "sixteenth"
     if fam in ("compact", "energetic"):

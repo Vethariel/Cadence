@@ -236,6 +236,34 @@ def test_apply_orchestration_gm():
     print("✓ test_apply_orchestration_gm OK")
 
 
+def test_energetic_game_suppresses_ensemble_families():
+    plan = _plan(
+        instruments=[
+            InstrumentAssignment(instrument_id="drums", gm_program=0, active=True),
+            InstrumentAssignment(instrument_id="bass", gm_program=34, active=True),
+            InstrumentAssignment(instrument_id="melody", gm_program=27, active=True),
+            InstrumentAssignment(instrument_id="countermelody", gm_program=40, active=True),
+            InstrumentAssignment(instrument_id="arp_synth", gm_program=98, active=True),
+            InstrumentAssignment(instrument_id="strings_ensemble", gm_program=48, active=True),
+            InstrumentAssignment(instrument_id="woodwind_a", gm_program=68, active=True),
+        ],
+    )
+    validated = validate_orchestration(
+        plan,
+        use_case="game",
+        energy_level=4,
+        generation_seed=99,
+        composition_archetype="energetic_game",
+        genre_tags=["boss fight", "combat", "platform", "orchestral", "cinematic"],
+        raw_prompt="Pelea de jefe en plataforma: orquestación compacta, sin capas orquestales masivas.",
+    )
+    ids = {a.instrument_id for a in validated.instruments if a.active}
+    assert "strings_ensemble" not in ids
+    assert "woodwind_a" not in ids
+    assert len(ids) <= 7
+    print("✓ test_energetic_game_suppresses_ensemble_families OK")
+
+
 def test_orchestral_boss_trims_non_lead_optionals_without_error():
     """Regresión: recortar fx_riser/perc_aux no debe fallar en lead_present.remove."""
     plan = _plan(
@@ -433,6 +461,7 @@ if __name__ == "__main__":
     test_resolve_rhythm_patterns_fallback_by_genre()
     test_arrangement_from_orchestration_plan()
     test_apply_orchestration_gm()
+    test_energetic_game_suppresses_ensemble_families()
     test_orchestral_boss_trims_non_lead_optionals_without_error()
     test_melody_chord_stab_cannot_share_gm_program()
     test_melody_echo_synth_cannot_share_gm_program()

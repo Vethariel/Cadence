@@ -57,13 +57,15 @@ def optional_layer_genre_score(
 
     tags = _tags_from_inputs(genre_tags, genre_mix)
     score = 1.0
-    arch = composition_archetype or ""
+    from cadence.music.composition_archetypes import normalize_archetype
+
+    arch = normalize_archetype(composition_archetype or "")
     cat_mix = category_mix_from_genre_mix(genre_mix or {}) or category_mix_from_genres(
         list(tags),
     )
     if arch == "orchestral_boss":
         cat_mix = {**cat_mix, "orchestral_cinematic": cat_mix.get("orchestral_cinematic", 0) + 0.4}
-    if arch == "chiptune_dance":
+    if arch == "dense_dance":
         cat_mix = {**cat_mix, "synth_retro_game": cat_mix.get("synth_retro_game", 0) + 0.4}
     from cadence.music.genre_category_patterns import category_score_optional_layer
 
@@ -93,19 +95,26 @@ def adjust_optional_budget(
     use_case: str = "game",
 ) -> tuple[int, int]:
     """Ajusta presupuesto sin romper guardrails compactos."""
+    from cadence.music.composition_archetypes import normalize_archetype, suppresses_ensemble
+
     tags = _tags_from_inputs(genre_tags, genre_mix)
-    arch = composition_archetype or ""
+    arch = normalize_archetype(composition_archetype or "")
     uc = (use_case or "game").lower()
     opt, lead = max_optional, max_lead
 
-    if arch == "compact_action":
-        return min(opt, 3), min(lead, 1)
+    if arch in ("compact_action", "energetic_game"):
+        return min(opt, 3), min(lead, 2 if arch == "energetic_game" else 1)
     if arch == "orchestral_boss" and energy_level >= 4:
         opt = min(opt + 1, 5)
         lead = min(lead + 1, 3)
-    elif arch == "chiptune_dance" and energy_level >= 4:
+    elif arch == "dense_dance" and energy_level >= 4:
+        opt = min(opt, 4)
         lead = min(lead + 1, 3)
-    elif tags & {"orchestral", "cinematic", "epic"} and energy_level >= 4:
+    elif (
+        tags & {"orchestral", "cinematic", "epic"}
+        and energy_level >= 4
+        and not suppresses_ensemble(arch)
+    ):
         opt = min(opt + 1, 5)
         lead = min(lead + 1, 3)
     elif tags & {"chiptune", "techno", "dubstep"} and energy_level >= 4:

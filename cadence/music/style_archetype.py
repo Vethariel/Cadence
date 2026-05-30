@@ -289,6 +289,12 @@ def infer_composition_archetype_with_reason(
         )
     )
 
+    if anti_orchestra and _prompt_has(prompt, _CHIPTUNE_PROMPT) and not boss_prompt:
+        return ArchetypeDecision(
+            "dense_dance",
+            "precedence_matrix:chiptune_anti_orchestra_over_compact",
+        )
+
     matrix = resolve_compact_vs_orchestral_precedence(
         compact_prompt=compact_prompt,
         orchestral_prompt=orchestral_prompt,
@@ -367,6 +373,17 @@ def infer_composition_archetype_with_reason(
 
     if (
         energy >= 4
+        and _prompt_has(prompt, _CHIPTUNE_PROMPT)
+        and anti_orchestra
+        and not _prompt_has(prompt, _BOSS_PROMPT)
+    ):
+        return ArchetypeDecision(
+            "dense_dance",
+            "chiptune_dense_prompt_without_orchestra",
+        )
+
+    if (
+        energy >= 4
         and (_prompt_has(prompt, _INDUSTRIAL_PROMPT) or _tags_have(keys, _INDUSTRIAL_TAGS))
     ):
         return ArchetypeDecision(
@@ -392,8 +409,12 @@ def infer_composition_archetype_with_reason(
     if anti_orchestra:
         scores["orchestral_boss"] -= _PROMPT_WEIGHT
         scores["hybrid_epic"] -= _TAG_WEIGHT
-        scores["energetic_game"] += _PROMPT_WEIGHT * 0.6
-        scores["compact_action"] += _PROMPT_WEIGHT * 0.4
+        if _prompt_has(prompt, _CHIPTUNE_PROMPT):
+            scores["dense_dance"] += _PROMPT_WEIGHT
+            scores["compact_action"] -= _TAG_WEIGHT * 2
+        else:
+            scores["energetic_game"] += _PROMPT_WEIGHT * 0.6
+            scores["compact_action"] += _PROMPT_WEIGHT * 0.4
 
     if compact_prompt and not orchestral_prompt:
         scores["compact_action"] += _PROMPT_WEIGHT
@@ -436,9 +457,13 @@ _LLM_OVERRIDE_CONFLICTS: dict[str, frozenset[str]] = {
         "lofi_downtempo", "industrial_combat",
     }),
     "moderate_cinematic": frozenset({"dense_dance", "sparse_loop", "lofi_downtempo"}),
-    "dense_dance": frozenset({"orchestral_boss", "moderate_cinematic", "hybrid_epic"}),
     "hybrid_epic": frozenset({"compact_action", "energetic_game", "lofi_downtempo"}),
-    "energetic_game": frozenset({"orchestral_boss", "hybrid_epic"}),
+    "energetic_game": frozenset({
+        "orchestral_boss", "hybrid_epic", "dense_dance",
+    }),
+    "dense_dance": frozenset({
+        "orchestral_boss", "moderate_cinematic", "hybrid_epic", "energetic_game",
+    }),
 }
 
 
@@ -479,6 +504,23 @@ def reconcile_llm_archetype(
             inferred,
             f"prompt_guardrail:anti_orchestra_overrides_llm_{llm_raw}",
         )
+
+    if (
+        llm == "energetic_game"
+        and _prompt_has(prompt, _CHIPTUNE_PROMPT)
+        and not _prompt_has(prompt, _BOSS_PROMPT)
+    ):
+        return ArchetypeDecision(
+            "dense_dance",
+            "prompt_guardrail:chiptune_dense_over_llm_energetic",
+        )
+
+    if (
+        llm == "dense_dance"
+        and inferred == "energetic_game"
+        and decision.reason.startswith("precedence_matrix:")
+    ):
+        return decision
 
     conflicts = _LLM_OVERRIDE_CONFLICTS.get(llm, frozenset())
     if inferred in conflicts:
@@ -542,7 +584,7 @@ def melody_texture_for_archetype(
     if fam == "sparse":
         return "sparse"
     if fam == "cinematic":
-        return "sparse" if energy_level <= 2 else "balanced"
+        return "balanced"
     if fam == "orchestral":
         return "balanced"
     from cadence.music.repertoire_signals import default_melody_texture

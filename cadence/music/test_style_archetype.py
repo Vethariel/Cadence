@@ -121,6 +121,20 @@ def test_industrial_combat_from_prompt():
     assert arch == "industrial_combat"
 
 
+def test_reconcile_chiptune_dense_over_llm_energetic():
+    from cadence.music.style_archetype import reconcile_llm_archetype
+
+    decision = reconcile_llm_archetype(
+        "energetic_game",
+        style_profile=MusicalStyleProfile(genres=["chiptune", "eurobeat", "arcade"]),
+        raw_prompt="Combate arcade o victoria: melodía muy densa, chiptune, sin orquesta",
+        use_case="game",
+        energy_level=5,
+    )
+    assert decision.archetype == "dense_dance"
+    assert "chiptune" in decision.reason or "guardrail" in decision.reason
+
+
 def test_benchmark_energetic_game_archetype():
     bp = next(p for p in load_benchmark_prompts() if p.id == "energetic_game")
     arch = infer_composition_archetype(
@@ -150,6 +164,7 @@ if __name__ == "__main__":
     test_explicit_no_drums_suppresses()
     test_lofi_downtempo_from_prompt()
     test_industrial_combat_from_prompt()
+    test_reconcile_chiptune_dense_over_llm_energetic()
     test_benchmark_energetic_game_archetype()
     test_melody_texture_chiptune_dense()
     print("All style_archetype tests passed.")

@@ -502,9 +502,12 @@ def max_optional_budget(
     max_opt = MAX_OPTIONAL_BY_USE_CASE.get(uc, 4)
     max_lead = MAX_LEAD_OPTIONALS.get(uc, 2)
 
-    arch = composition_archetype or ""
-    if arch == "compact_action":
-        base_opt, base_lead = min(max_opt, 3), 1
+    from cadence.music.composition_archetypes import archetype_optional_budget, normalize_archetype
+
+    arch = normalize_archetype(composition_archetype or "")
+    fixed = archetype_optional_budget(arch, energy_level, uc)
+    if fixed is not None:
+        base_opt, base_lead = fixed
     elif arch == "orchestral_boss" and energy_level >= 4:
         base_opt, base_lead = min(max_opt + 1, 5), min(max_lead + 1, 3)
     elif energy_level <= 2 and uc != "loop":
@@ -524,7 +527,7 @@ def max_optional_budget(
         base_lead,
         genre_tags=genre_tags,
         genre_mix=mix,  # type: ignore[arg-type]
-        composition_archetype=composition_archetype,
+        composition_archetype=arch,
         energy_level=energy_level,
         use_case=use_case,
     )

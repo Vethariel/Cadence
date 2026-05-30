@@ -88,6 +88,57 @@ def all_archetype_scores() -> dict[str, float]:
     return {a: 0.0 for a in COMPOSITION_ARCHETYPES}
 
 
+# Sin familias ensemble (woodwind, strings_ensemble, etc.)
+ARCHETYPE_SUPPRESSES_ENSEMBLE: frozenset[str] = frozenset({
+    "sparse_loop",
+    "lofi_downtempo",
+    "stealth_tension",
+    "compact_action",
+    "energetic_game",
+    "dense_dance",
+    "industrial_combat",
+})
+
+
+def suppresses_ensemble(archetype: str | None) -> bool:
+    return normalize_archetype(archetype) in ARCHETYPE_SUPPRESSES_ENSEMBLE
+
+
+def archetype_optional_budget(
+    archetype: str | None,
+    energy_level: int,
+    use_case: str,
+) -> tuple[int, int] | None:
+    """
+    (max_optionals, max_lead_optionals) fijos por arquetipo, o None = reglas genéricas.
+    """
+    arch = normalize_archetype(archetype)
+    uc = (use_case or "game").lower()
+    energy = max(1, min(5, energy_level))
+
+    if arch == "compact_action":
+        return 3, 1
+    if arch == "energetic_game":
+        return 3, 2
+    if arch == "dense_dance" and energy >= 4:
+        return 4, 3
+    if arch == "orchestral_boss" and energy >= 4:
+        return 5, 3
+    if arch == "hybrid_epic" and energy >= 4:
+        return 5, 3
+    if arch == "moderate_cinematic":
+        return 3, 1
+    if arch == "sparse_loop":
+        return (0, 0) if uc == "loop" else (2, 0)
+    if arch == "lofi_downtempo":
+        return (2, 0)
+    if arch == "stealth_tension":
+        return 2, 0
+    if arch == "menu_theme":
+        return 2, 1
+    return None
+
+
 def format_archetypes_for_llm() -> str:
     """Lista compacta para el prompt del technical_spec."""
     return " | ".join(COMPOSITION_ARCHETYPES)

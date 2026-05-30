@@ -833,11 +833,16 @@ def validate_orchestration(
     from cadence.music.style_archetype import infer_composition_archetype
     from cadence.schemas.song_state import GenerationStrategies
 
-    archetype = composition_archetype or infer_composition_archetype(
-        style_profile=style_profile,
-        raw_prompt=raw_prompt,
-        use_case=use_case,
-        energy_level=energy_level,
+    from cadence.music.composition_archetypes import normalize_archetype, suppresses_ensemble
+
+    archetype = normalize_archetype(
+        composition_archetype
+        or infer_composition_archetype(
+            style_profile=style_profile,
+            raw_prompt=raw_prompt,
+            use_case=use_case,
+            energy_level=energy_level,
+        )
     )
     timbre_context = {
         "genre_tags": genre_tags,
@@ -876,7 +881,10 @@ def validate_orchestration(
         energy_level=energy_level,
         genre_mix=genre_mix,
     )
-    extra_opt, extra_lead = ensemble_optional_budget_bonus(e_score)
+    if suppresses_ensemble(archetype):
+        extra_opt, extra_lead = 0, 0
+    else:
+        extra_opt, extra_lead = ensemble_optional_budget_bonus(e_score)
     max_optional = min(8, max_optional + extra_opt)
     max_lead = min(5, max_lead + extra_lead)
     allowed_pool: set[str] | None = None
@@ -907,7 +915,10 @@ def validate_orchestration(
 
     max_total = max_optional + len(CORE_INSTRUMENTS)
     if len(by_id) > max_total:
-        trim_candidates = [iid for iid in by_id if iid not in protected]
+        trim_candidates = [
+            iid for iid in by_id
+            if iid not in protected and iid not in CORE_INSTRUMENTS
+        ]
         trim_candidates.sort(
             key=lambda iid: (
                 optional_layer_genre_score(
@@ -955,7 +966,7 @@ def validate_orchestration(
                 if iid in lead_present:
                     lead_present.remove(iid)
 
-    if not lock_llm_ensemble:
+    if not lock_llm_ensemble and not suppresses_ensemble(archetype):
         inject_ensemble_into_assignments(
             by_id,
             genre_tags=genre_tags,
@@ -966,6 +977,9 @@ def validate_orchestration(
             timbre_context=timbre_context,
             genre_mix=genre_mix,
         )
+    elif suppresses_ensemble(archetype):
+        for eid in ENSEMBLE_INSTRUMENT_IDS:
+            by_id.pop(eid, None)
     for ens, generic in ENSEMBLE_REPLACES_OPTIONAL.items():
         if ens in by_id and generic in by_id:
             del by_id[generic]
