@@ -8,6 +8,7 @@ Sin listas de géneros/tags: el repertorio se infiere de cómo suena la estrateg
 from __future__ import annotations
 
 from cadence.music.arp_patterns import ARP_PATTERNS
+from cadence.music.pattern_registry import pattern_family
 from cadence.music.instrument_patterns import (
     COUNTER_STEP_PATTERNS,
     PERC_CLAP_PATTERNS,
@@ -36,9 +37,10 @@ def pattern_density(pattern_id: str | None, kind: str) -> int:
     """Pasos activos por compás (proxy de densidad rítmica)."""
     if not pattern_id:
         return 0
-    if kind == "arp" and pattern_id == "sixteenth":
+    if kind == "arp" and pattern_family(pattern_id or "") == "sixteenth":
         return 16
-    steps = _PATTERN_STEPS.get(kind, {}).get(pattern_id)
+    fam = pattern_family(pattern_id or "")
+    steps = _PATTERN_STEPS.get(kind, {}).get(pattern_id) or _PATTERN_STEPS.get(kind, {}).get(fam)
     if steps:
         return len(steps)
     if kind == "arp" and pattern_id in ARP_PATTERNS:
@@ -121,21 +123,51 @@ def harmony_pool_priority(
     return [p for p in order if p in HARMONY_POOL] + [p for p in HARMONY_POOL if p not in order]
 
 
-def bass_pool_priority(energy_level: int, use_case: str) -> list[str]:
+def bass_pool_priority(
+    energy_level: int,
+    use_case: str,
+    *,
+    composition_archetype: str | None = None,
+) -> list[str]:
     from cadence.music.strategy_pools import BASS_POOL
+
+    arch = composition_archetype or ""
+    if arch == "chiptune_dance":
+        return ["octave_pulse", "driving", "syncopated", "half_time", "walk"] + [
+            p for p in BASS_POOL
+            if p not in ("octave_pulse", "driving", "syncopated", "half_time", "walk", "root_fifth")
+        ]
+    if arch == "compact_action":
+        return ["driving", "syncopated", "octave_pulse", "half_time", "pulse"] + [
+            p for p in BASS_POOL if p not in ("driving", "syncopated", "octave_pulse", "half_time", "pulse")
+        ]
+    if arch == "orchestral_boss":
+        return ["driving", "octave_pulse", "half_time", "syncopated", "walk"] + [
+            p for p in BASS_POOL if p not in ("driving", "octave_pulse", "half_time", "syncopated", "walk")
+        ]
 
     uc = (use_case or "game").lower()
     if uc in ("loop", "cutscene") or energy_level <= 2:
-        return ["pulse", "root_fifth", "half_time"] + [p for p in BASS_POOL if p not in ("pulse", "root_fifth", "half_time")]
+        return ["pulse", "half_time", "root_fifth"] + [
+            p for p in BASS_POOL if p not in ("pulse", "half_time", "root_fifth")
+        ]
     if energy_level >= 5:
-        return ["octave_pulse", "driving", "syncopated", "half_time"] + [
-            p for p in BASS_POOL if p not in ("octave_pulse", "driving", "syncopated", "half_time")
+        return ["octave_pulse", "driving", "syncopated", "walk", "half_time"] + [
+            p for p in BASS_POOL
+            if p not in ("octave_pulse", "driving", "syncopated", "walk", "half_time", "root_fifth")
         ]
     if energy_level >= 4:
-        return ["driving", "octave_pulse", "syncopated", "root_fifth"] + [
-            p for p in BASS_POOL if p not in ("driving", "octave_pulse", "syncopated", "root_fifth")
+        return ["driving", "octave_pulse", "syncopated", "walk", "half_time"] + [
+            p for p in BASS_POOL
+            if p not in ("driving", "octave_pulse", "syncopated", "walk", "half_time", "root_fifth")
         ]
-    return list(BASS_POOL)
+    if energy_level >= 3 and uc == "game":
+        return ["driving", "syncopated", "walk", "half_time", "octave_pulse", "root_fifth"] + [
+            p for p in BASS_POOL if p not in ("driving", "syncopated", "walk", "half_time", "octave_pulse", "root_fifth")
+        ]
+    return ["syncopated", "driving", "walk", "half_time", "pulse", "root_fifth"] + [
+        p for p in BASS_POOL if p not in ("syncopated", "driving", "walk", "half_time", "pulse", "root_fifth")
+    ]
 
 
 def layer_pattern_bias(
@@ -173,7 +205,9 @@ def layer_pattern_bias(
         bias["perc_candidates"] = ["syncopated", "four_clap", "backbeat"] + list(PERC_PATTERN_POOL)
         bias["pluck_candidates"] = ["sixteenth", "eighth", "syncopated"] + list(PLUCK_PATTERN_POOL)
         bias["counter_candidates"] = ["offbeat_sync", "sixteenth", "syncopated"] + list(COUNTER_PATTERN_POOL)
-        bias["bass_candidates"] = ["octave_pulse", "driving", "syncopated"]
+        bias["bass_candidates"] = [
+            "octave_pulse", "driving", "syncopated", "half_time", "walk",
+        ]
         return bias
 
     if arch == "orchestral_boss":
@@ -259,7 +293,7 @@ def instruments_implied_by_strategies(
         return implied
 
     if is_dense_pattern(strategies.arp_pattern, "arp") or (
-        strategies.arp_pattern == "sixteenth"
+        pattern_family(strategies.arp_pattern or "") == "sixteenth"
     ):
         implied.add("arp_synth")
 
@@ -438,33 +472,48 @@ def max_optional_budget(
     energy_level: int,
     *,
     composition_archetype: str | None = None,
+    genre_tags: list[str] | None = None,
+    genre_mix: object | None = None,
 ) -> tuple[int, int]:
-    """(max_optionals, max_lead_optionals) por rol y energía."""
-    uc = (use_case or "game").lower()
+    """(max_optionals, max_lead_optionals) por rol, energía y género."""
+    from cadence.music.genre_orchestration import adjust_optional_budget
     from cadence.music.instrument_catalog import (
         MAX_LEAD_OPTIONALS,
         MAX_OPTIONAL_BY_USE_CASE,
     )
+    from cadence.music.style_profile import build_genre_mix
+
+    uc = (use_case or "game").lower()
 
     max_opt = MAX_OPTIONAL_BY_USE_CASE.get(uc, 4)
     max_lead = MAX_LEAD_OPTIONALS.get(uc, 2)
 
     arch = composition_archetype or ""
     if arch == "compact_action":
-        return min(max_opt, 3), 1
-    if arch == "orchestral_boss" and energy_level >= 4:
-        return min(max_opt + 1, 5), min(max_lead + 1, 3)
-
-    if energy_level <= 2 and uc != "loop":
-        max_opt = min(max_opt, 2)
-        max_lead = min(max_lead, 1)
+        base_opt, base_lead = min(max_opt, 3), 1
+    elif arch == "orchestral_boss" and energy_level >= 4:
+        base_opt, base_lead = min(max_opt + 1, 5), min(max_lead + 1, 3)
+    elif energy_level <= 2 and uc != "loop":
+        base_opt, base_lead = min(max_opt, 2), min(max_lead, 1)
     elif energy_level >= 5 and uc in ("game", "animation"):
-        max_opt = min(max_opt + 1, 5)
-        max_lead = min(max_lead + 1, 3)
+        base_opt, base_lead = min(max_opt + 1, 5), min(max_lead + 1, 3)
     elif energy_level >= 4 and uc in ("game", "animation"):
-        max_lead = min(max_lead + 1, 3)
+        base_opt, base_lead = max_opt, min(max_lead + 1, 3)
+    else:
+        base_opt, base_lead = max_opt, max_lead
 
-    return max_opt, max_lead
+    mix = genre_mix if genre_mix is not None else (
+        build_genre_mix(proposal_tags=genre_tags) if genre_tags else {}
+    )
+    return adjust_optional_budget(
+        base_opt,
+        base_lead,
+        genre_tags=genre_tags,
+        genre_mix=mix,  # type: ignore[arg-type]
+        composition_archetype=composition_archetype,
+        energy_level=energy_level,
+        use_case=use_case,
+    )
 
 
 def enrich_orchestration_from_strategies(
@@ -536,30 +585,24 @@ def enrich_orchestration_from_strategies(
     })
 
 
-def lead_layers_for_fallback(energy_level: int, use_case: str, generation_seed: int) -> set[str]:
-    """Capas lead opcionales en fallback — solo energía y rol."""
+def lead_layers_for_fallback(
+    energy_level: int,
+    use_case: str,
+    generation_seed: int,
+    *,
+    genre_tags: list[str] | None = None,
+    composition_archetype: str | None = None,
+) -> set[str]:
+    """Capas lead opcionales en fallback — delega a selección genre-aware."""
+    from cadence.music.genre_orchestration import select_lead_layers_genre_aware
+
     uc = (use_case or "game").lower()
-    from cadence.music.instrument_catalog import MAX_LEAD_OPTIONALS
-
-    max_n = MAX_LEAD_OPTIONALS.get(uc, 2)
-    if max_n == 0:
-        return set()
-
-    if uc == "cutscene" or energy_level <= 2:
-        return {"countermelody"} if energy_level >= 2 else set()
-
-    if energy_level >= 5:
-        pool = ["arp_synth", "echo_synth", "countermelody", "chord_stab", "synth_pluck"]
-    elif energy_level >= 4:
-        pool = ["arp_synth", "echo_synth", "countermelody", "chord_stab"]
-    else:
-        pool = ["arp_synth", "countermelody"]
-
-    n = min(max_n, 2 if energy_level >= 4 else 1)
-    chosen: list[str] = []
-    for i in range(n):
-        idx = (generation_seed // (29 * (i + 1))) % len(pool)
-        c = pool[idx]
-        if c not in chosen:
-            chosen.append(c)
-    return set(chosen)
+    max_n = {"loop": 0, "cutscene": 1, "game": 2, "animation": 2}.get(uc, 2)
+    return select_lead_layers_genre_aware(
+        use_case=use_case,
+        energy_level=energy_level,
+        generation_seed=generation_seed,
+        genre_tags=genre_tags,
+        composition_archetype=composition_archetype,
+        max_lead=max_n,
+    )

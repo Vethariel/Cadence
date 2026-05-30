@@ -173,8 +173,15 @@ def test_resolve_rhythm_patterns_fallback_by_genre():
         use_case="game",
         generation_seed=0,
     )
-    assert drum == "dubstep"
-    assert bass in ("root_fifth", "driving", "syncopated", "pulse")
+    from cadence.music.pattern_registry import pattern_family
+
+    assert pattern_family(drum) in (
+        "dubstep", "breakbeat", "dnb", "industrial", "techno",
+    )
+    assert pattern_family(bass) in (
+        "driving", "syncopated", "octave_pulse", "walk", "half_time", "pulse",
+        "staccato", "sub_drop",
+    )
     print("✓ test_resolve_rhythm_patterns_fallback_by_genre OK")
 
 
@@ -186,7 +193,9 @@ def test_loop_energy_uses_pulse_bass_fallback():
         use_case="loop",
         generation_seed=0,
     )
-    assert bass == "pulse"
+    from cadence.music.pattern_registry import pattern_family
+
+    assert pattern_family(bass) in ("pulse", "half_time")
     print("✓ test_loop_energy_uses_pulse_bass_fallback OK")
 
 
@@ -252,6 +261,27 @@ def test_melody_chord_stab_cannot_share_gm_program():
     by_id = {a.instrument_id: a for a in validated.instruments}
     assert by_id["melody"].gm_program != by_id["chord_stab"].gm_program
     print("✓ test_melody_chord_stab_cannot_share_gm_program OK")
+
+
+def test_melody_echo_synth_cannot_share_gm_program():
+    plan = _plan(
+        instruments=[
+            InstrumentAssignment(instrument_id="drums", gm_program=0, active=True),
+            InstrumentAssignment(instrument_id="bass", gm_program=39, active=True),
+            InstrumentAssignment(instrument_id="melody", gm_program=80, active=True),
+            InstrumentAssignment(instrument_id="echo_synth", gm_program=80, active=True),
+        ],
+    )
+    validated = validate_orchestration(
+        plan,
+        use_case="game",
+        energy_level=5,
+        generation_seed=88,
+    )
+    by_id = {a.instrument_id: a for a in validated.instruments}
+    assert "echo_synth" in by_id
+    assert by_id["melody"].gm_program != by_id["echo_synth"].gm_program
+    print("✓ test_melody_echo_synth_cannot_share_gm_program OK")
 
 
 def test_melody_countermelody_cannot_share_gm_program():
@@ -333,6 +363,7 @@ if __name__ == "__main__":
     test_arrangement_from_orchestration_plan()
     test_apply_orchestration_gm()
     test_melody_chord_stab_cannot_share_gm_program()
+    test_melody_echo_synth_cannot_share_gm_program()
     test_melody_countermelody_cannot_share_gm_program()
     test_style_profile_avoids_incoherent_timbres()
     test_style_profile_no_avoid_keeps_programs()

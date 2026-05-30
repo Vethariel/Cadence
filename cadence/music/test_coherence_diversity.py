@@ -20,7 +20,11 @@ from cadence.music.narrative_contract import (
     contract_section_intent_map,
 )
 from cadence.music.section_refs import canonical_section_ids
+from cadence.music.pattern_batch_context import PatternBatchContext, clear_service_combo_memory
+from cadence.music.pattern_selection_audit import pattern_family_entropy
+from cadence.music.pattern_registry import pattern_family
 from cadence.music.strategy_pools import select_strategies
+from cadence.schemas.song_state import PatternSelectionAudit
 from cadence.schemas.song_state import (
     InstrumentAssignment,
     OrchestrationPlan,
@@ -29,6 +33,10 @@ from cadence.schemas.song_state import (
     Track,
     ValidationResult,
 )
+from cadence.analysis.benchmark_examples import load_benchmark_prompts
+from cadence.music.tonal_batch_context import TonalBatchContext
+from cadence.music.tonal_policy import apply_tonal_policy_to_proposal, select_tonal_center
+from cadence.schemas.song_state import TechnicalProposal, UserIntent
 from cadence.test_fixtures.pipeline_coherence import (
     CANONICAL_SECTION_IDS,
     build_aligned_pipeline_state,
@@ -170,13 +178,20 @@ def test_inter_request_measurable_strategy_diversity():
     """Mismo contexto musical; seeds distintas → patrones distintos."""
     tags = ["techno", "dubstep"]
     sigs: set[tuple[str, str, str]] = set()
-    for seed in range(0, 64):
-        s = select_strategies(
-            seed, tags, "minor", "game", 5,
-            composition_archetype="default_game",
-        )
-        sigs.add((s.drum_pattern, s.bass_pattern, s.harmony_pool))
+    drum_families: list[str] = []
+    clear_service_combo_memory()
+    with PatternBatchContext(combo_window=4):
+        for seed in range(0, 64):
+            s = select_strategies(
+                seed, tags, "minor", "game", 5,
+                composition_archetype="default_game",
+            )
+            sigs.add((s.drum_pattern, s.bass_pattern, s.harmony_pool))
+            drum_families.append(s.drum_pattern)
     assert len(sigs) >= 3, f"poca diversidad de estrategias: {len(sigs)} firmas"
+    assert pattern_family_entropy(drum_families) >= 1.2, (
+        f"entropía baja de familias drum: {pattern_family_entropy(drum_families)}"
+    )
 
     a = select_strategies(17, tags, "minor", "game", 5)
     b = select_strategies(17017, tags, "minor", "game", 5)
@@ -184,6 +199,48 @@ def test_inter_request_measurable_strategy_diversity():
         a.harmony_pool != b.harmony_pool
     )
     print("✓ test_inter_request_measurable_strategy_diversity OK")
+
+
+def test_inter_request_entropy_higher_with_combo_diversity_window():
+    """Ventana de diversidad de combos → mayor entropía inter-request."""
+    tags = ["techno", "industrial"]
+    seeds = list(range(200, 232))
+
+    def _entropy_for_window(window: int) -> float:
+        clear_service_combo_memory()
+        drums: list[str] = []
+        with PatternBatchContext(combo_window=window):
+            for seed in seeds:
+                s = select_strategies(
+                    seed, tags, "minor", "game", 5,
+                    composition_archetype="compact_action",
+                )
+                drums.append(s.drum_pattern)
+        return pattern_family_entropy(drums)
+
+    ent_no_window = _entropy_for_window(0)
+    ent_window = _entropy_for_window(4)
+    assert ent_window >= ent_no_window, (
+        f"entropía no subió con combo_window: sin={ent_no_window} con={ent_window}"
+    )
+    print(f"  entropy window=0: {ent_no_window}, window=4: {ent_window}")
+    print("✓ test_inter_request_entropy_higher_with_combo_diversity_window OK")
+
+
+def test_intra_request_audit_coherence_with_strategies():
+    """Coherencia: audit.chosen coincide con strategies del mismo request."""
+    audit = PatternSelectionAudit(generation_seed=808)
+    s = select_strategies(
+        808, ["cinematic", "orchestral"], "minor", "cutscene", 3,
+        composition_archetype="cinematic_cutscene",
+        pattern_selection_audit=audit,
+    )
+    by_field = {f.field: f for f in audit.fields}
+    assert by_field["drum"].chosen == s.drum_pattern
+    assert by_field["bass"].chosen == s.bass_pattern
+    assert by_field["harmony"].chosen == s.harmony_pool
+    assert audit.rhythm_combo
+    print("✓ test_intra_request_audit_coherence_with_strategies OK")
 
 
 def test_inter_request_measurable_timbre_diversity_by_seed():
@@ -204,7 +261,9 @@ def test_inter_request_measurable_timbre_diversity_by_seed():
             use_case="game",
             energy_level=5,
             generation_seed=seed,
+            genre_tags=["techno", "industrial"],
             raw_prompt="boss fight techno dark",
+            composition_archetype="compact_action",
         )
         melody = next(
             a for a in validated.instruments if a.instrument_id == "melody"
@@ -234,6 +293,56 @@ def test_inter_request_strategy_planner_differs_by_seed_same_contract():
     print("✓ test_inter_request_strategy_planner_differs_by_seed_same_contract OK")
 
 
+def test_tonal_distribution_benchmark_suite_not_all_d_minor():
+    """Suite de benchmarks: diversidad tonal y sin repetir firma consecutiva."""
+    keys: list[str] = []
+    with TonalBatchContext() as batch:
+        for i, bp in enumerate(load_benchmark_prompts()):
+            key, mode, reason = select_tonal_center(
+                raw_prompt=bp.prompt,
+                mood="",
+                genre_tags=list(bp.style_hints),
+                use_case=bp.expected_use_case,
+                energy_level=(bp.expected_energy[0] + bp.expected_energy[1]) // 2,
+                seed=5000 + i * 9973,
+                record_batch=True,
+            )
+            batch.record(key, mode)
+            keys.append(f"{key} {mode}")
+            assert reason
+
+    unique = set(keys)
+    unique_roots = {k.split()[0] for k in keys}
+    assert len(unique) >= 3, f"poca diversidad tonal: {keys}"
+    assert len(unique_roots) >= 3, f"pocos centros tonales: {keys}"
+    d_minor_count = sum(1 for k in keys if k.startswith("D ") and "minor" in k)
+    assert d_minor_count <= 1, f"sesgo D minor: {keys}"
+    print(f"  tonal suite: {keys}")
+    print("✓ test_tonal_distribution_benchmark_suite_not_all_d_minor OK")
+
+
+def test_tonal_policy_on_proposal_respects_explicit_key():
+    intent = UserIntent(
+        raw_prompt="canción en F# minor, 120 bpm",
+        knowledge_level="technical",
+        use_case="game",
+    )
+    proposal = TechnicalProposal(
+        bpm=120,
+        key="F#",
+        mode="minor",
+        genre_tags=["techno"],
+        energy_level=4,
+        structure=["intro", "drop", "outro"],
+        reasoning="test",
+    )
+    out, reason = apply_tonal_policy_to_proposal(proposal, intent, seed=99)
+    assert out.key == "F#"
+    assert out.mode == "minor"
+    assert "explicit" in reason
+    print("✓ test_tonal_policy_on_proposal_respects_explicit_key OK")
+
+
 def test_contract_signature_stable_across_seeds():
     intent = build_aligned_pipeline_state(generation_seed=1)["intent"]
     narrative = build_aligned_pipeline_state(generation_seed=2)["narrative"]
@@ -248,7 +357,11 @@ if __name__ == "__main__":
     test_validator_uses_same_contract_as_narrative()
     test_inter_request_narrative_invariants_same_prompt_different_seeds()
     test_inter_request_measurable_strategy_diversity()
+    test_inter_request_entropy_higher_with_combo_diversity_window()
+    test_intra_request_audit_coherence_with_strategies()
     test_inter_request_measurable_timbre_diversity_by_seed()
     test_inter_request_strategy_planner_differs_by_seed_same_contract()
+    test_tonal_distribution_benchmark_suite_not_all_d_minor()
+    test_tonal_policy_on_proposal_respects_explicit_key()
     test_contract_signature_stable_across_seeds()
     print("\n✓ All coherence_diversity tests passed")

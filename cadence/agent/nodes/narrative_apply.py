@@ -163,33 +163,19 @@ def melody_rest_ratio(
     *,
     use_case: str = "game",
     composition_archetype: str | None = None,
+    energy_level: int = 3,
+    melody_texture: str = "balanced",
 ) -> float:
     """Proporción sugerida de silencios en el patrón melódico."""
-    uc = (use_case or "game").lower()
-    arch = composition_archetype or ""
-    if arch == "chiptune_dance":
-        if intent and intent.narrative_role in ("climax", "tension"):
-            return 0.02
-        return 0.06
-    if arch == "compact_action":
-        if intent and intent.narrative_role in ("climax", "tension"):
-            return 0.06
-        return 0.10
-    if intent is None:
-        return 0.15 if uc in ("loop", "cutscene") else 0.1
-    if uc in ("loop", "cutscene"):
-        if intent.density < 0.35:
-            return 0.28
-        if intent.density < 0.55:
-            return 0.18
-        return 0.12
-    if intent.density < 0.35:
-        return 0.45
-    if intent.density < 0.55:
-        return 0.25
-    if intent.narrative_role in ("climax", "tension"):
-        return 0.05
-    return 0.15
+    from cadence.music.melody_density_policy import melody_rest_ratio_for_intent
+
+    return melody_rest_ratio_for_intent(
+        intent,
+        use_case=use_case,
+        composition_archetype=composition_archetype,
+        energy_level=energy_level,
+        melody_texture=melody_texture,
+    )
 
 
 def narrative_melody_hint(intent: SectionIntent | None) -> str:

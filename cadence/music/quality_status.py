@@ -5,6 +5,11 @@ Estado de calidad explícito al exportar — sin ocultar degradaciones narrativa
 from __future__ import annotations
 
 from cadence.agent.nodes.repair import failed_check_names
+from cadence.agent.nodes.validator import (
+    PASS_SCORE_THRESHOLD,
+    PERCEPTUAL_CHECK_NAMES,
+    TECHNICAL_CHECK_NAMES,
+)
 from cadence.schemas.song_state import SongState
 
 QualityStatus = str  # passed | degraded | failed_contract
@@ -14,6 +19,9 @@ NARRATIVE_QUALITY_CHECKS = frozenset({
     "narrative_intensity",
     "narrative_motif",
 })
+
+# Score ≥ umbral de pass pero con reintentos — calidad perceptual dudosa
+BORDERLINE_SCORE_MAX = 0.88
 
 
 def _contract_integrity_ok(state: SongState | dict) -> tuple[bool, str | None]:
@@ -32,12 +40,21 @@ def _contract_integrity_ok(state: SongState | dict) -> tuple[bool, str | None]:
     return True, None
 
 
+def _is_borderline_acceptance(validation, retry_count: int) -> bool:
+    if not validation or not validation.passed:
+        return False
+    if retry_count <= 0:
+        return False
+    return validation.score <= BORDERLINE_SCORE_MAX
+
+
 def compute_quality_metadata(state: SongState | dict) -> dict:
     """
     Metadatos de calidad y trazabilidad para .rsong.
 
-    - passed: validación OK
-    - degraded: exportado sin pass (p. ej. agotó reintentos) sin rotura de contrato
+    - passed: validación score ≥ umbral (puede coexistir con degraded)
+    - degraded: reintentos + score limítrofe, fallos perceptuales con pass técnico,
+      o export sin pass
     - failed_contract: checks narrativos o desalineación contrato/structure
     """
     validation = state.get("validation_result") if isinstance(state, dict) else None
@@ -52,10 +69,28 @@ def compute_quality_metadata(state: SongState | dict) -> dict:
     narrative_failed = [c for c in failed if c in NARRATIVE_QUALITY_CHECKS]
     contract_ok, contract_reason = _contract_integrity_ok(state)
 
+    failed_set = set(failed)
+    if validation:
+        if validation.passed_technical is not None:
+            passed_technical = validation.passed_technical
+        else:
+            passed_technical = not (failed_set & TECHNICAL_CHECK_NAMES)
+        if validation.passed_perceptual is not None:
+            passed_perceptual = validation.passed_perceptual
+        else:
+            passed_perceptual = not (failed_set & PERCEPTUAL_CHECK_NAMES)
+    else:
+        passed_technical = False
+        passed_perceptual = False
+    borderline = _is_borderline_acceptance(validation, retry_count)
+
     if not contract_ok or narrative_failed:
         status: QualityStatus = "failed_contract"
     elif validation and validation.passed:
-        status = "passed"
+        if borderline or not passed_perceptual:
+            status = "degraded"
+        else:
+            status = "passed"
     else:
         status = "degraded"
 
@@ -65,8 +100,14 @@ def compute_quality_metadata(state: SongState | dict) -> dict:
 
     return {
         "quality_status": status,
+        "composition_archetype": state.get("composition_archetype"),
+        "archetype_reason": state.get("archetype_reason"),
         "validation_passed": bool(validation.passed) if validation else False,
+        "validation_passed_technical": passed_technical,
+        "validation_passed_perceptual": passed_perceptual,
         "validation_score": round(validation.score, 3) if validation else 0.0,
+        "validation_score_threshold": PASS_SCORE_THRESHOLD,
+        "validation_borderline": borderline,
         "retry_count": retry_count,
         "generation_seed": generation_seed,
         "request_id": request_id,

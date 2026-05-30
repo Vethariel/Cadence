@@ -6,7 +6,6 @@ from cadence.instruments.registry import get_instrument, list_instruments
 from cadence.music.repertoire_signals import (
     enrich_orchestration_from_strategies,
     instruments_implied_by_strategies,
-    lead_layers_for_fallback,
     max_optional_budget,
     percussion_suppressed,
 )
@@ -15,6 +14,7 @@ from cadence.music.timbre_library import (
     BROWSER_SOUNDFONT,
     assert_browser_gm_program,
     extended_timbres_flat,
+    filter_melody_timbres,
     gm_name,
     style_anchor_timbres_flat,
 )
@@ -24,6 +24,7 @@ from cadence.schemas.song_state import (
     OrchestrationPlan,
     Track,
 )
+from cadence.music.melody_identity import melody_instrument_from_state
 from cadence.music.style_profile import programs_matching_avoid
 
 CORE_INSTRUMENTS = frozenset({"drums", "bass", "melody"})
@@ -72,10 +73,21 @@ def select_fallback_lead_layers(
     energy_level: int,
     genre_tags: list[str] | None = None,
     generation_seed: int,
+    composition_archetype: str | None = None,
 ) -> set[str]:
-    """Capas lead opcionales en fallback — energía y rol."""
-    del genre_tags  # compatibilidad de firma; sin sesgo por tags
-    return lead_layers_for_fallback(energy_level, use_case, generation_seed)
+    """Capas lead opcionales en fallback — género, energía y rol."""
+    from cadence.music.genre_orchestration import select_lead_layers_genre_aware
+
+    uc = (use_case or "game").lower()
+    max_lead = MAX_LEAD_OPTIONALS.get(uc, 2)
+    return select_lead_layers_genre_aware(
+        use_case=use_case,
+        energy_level=energy_level,
+        generation_seed=generation_seed,
+        composition_archetype=composition_archetype,
+        genre_tags=genre_tags,
+        max_lead=max_lead,
+    )
 
 
 # Timbres GM permitidos por instrument_id.
@@ -102,16 +114,43 @@ TIMBRES_BY_INSTRUMENT.update(_build_timbres_by_instrument())
 GM_OPTIONS = TIMBRES_BY_INSTRUMENT
 
 
-def get_timbres(instrument_id: str) -> list[tuple[int, str]]:
+def get_timbres(
+    instrument_id: str,
+    *,
+    genre_tags: list[str] | None = None,
+    mood: str = "",
+    use_case: str = "game",
+    composition_archetype: str | None = None,
+) -> list[tuple[int, str]]:
     """Lista de (gm_program, nombre) disponibles para un instrument_id."""
     if instrument_id in TIMBRES_BY_INSTRUMENT:
-        return list(TIMBRES_BY_INSTRUMENT[instrument_id])
-    defn = get_instrument(instrument_id)
-    return [(0, defn.display_name)]
+        timbres = list(TIMBRES_BY_INSTRUMENT[instrument_id])
+    else:
+        defn = get_instrument(instrument_id)
+        timbres = [(0, defn.display_name)]
+    if instrument_id == "melody" and genre_tags is not None:
+        return filter_melody_timbres(
+            timbres,
+            genre_tags=genre_tags,
+            mood=mood,
+            use_case=use_case,
+            composition_archetype=composition_archetype,
+        )
+    if instrument_id == "bass" and genre_tags is not None:
+        from cadence.music.timbre_library import filter_bass_timbres
+
+        return filter_bass_timbres(
+            timbres,
+            genre_tags=genre_tags,
+            mood=mood,
+            use_case=use_case,
+            composition_archetype=composition_archetype,
+        )
+    return timbres
 
 
-def timbre_programs(instrument_id: str) -> set[int]:
-    return {p for p, _ in get_timbres(instrument_id)}
+def timbre_programs(instrument_id: str, **timbre_context: object) -> set[int]:
+    return {p for p, _ in get_timbres(instrument_id, **timbre_context)}  # type: ignore[arg-type]
 
 
 def resolve_timbre(
@@ -119,13 +158,23 @@ def resolve_timbre(
     gm_program: int,
     *,
     generation_seed: int = 0,
+    genre_tags: list[str] | None = None,
+    mood: str = "",
+    use_case: str = "game",
+    composition_archetype: str | None = None,
 ) -> tuple[int, str]:
     """
     Resuelve timbre desde la lista permitida.
     Si gm_program no está en la lista, elige el más cercano;
     si gm_program es 0 y hay opciones, elige variante por seed (fallback).
     """
-    allowed = get_timbres(instrument_id)
+    allowed = get_timbres(
+        instrument_id,
+        genre_tags=genre_tags,
+        mood=mood,
+        use_case=use_case,
+        composition_archetype=composition_archetype,
+    )
     programs = [p for p, _ in allowed]
 
     if gm_program in programs:
@@ -194,7 +243,9 @@ def _assignment_from_timbre(
     *,
     generation_seed: int,
     default_mix: float | None = None,
+    timbre_context: dict | None = None,
 ) -> InstrumentAssignment:
+    ctx = timbre_context or {}
     defn = get_instrument(item.instrument_id)
     mix = default_mix if default_mix is not None else item.mix_level
     if is_drum(item.instrument_id, defn.role):
@@ -209,6 +260,7 @@ def _assignment_from_timbre(
         item.instrument_id,
         item.gm_program,
         generation_seed=generation_seed,
+        **ctx,
     )
     return InstrumentAssignment(
         instrument_id=item.instrument_id,
@@ -223,8 +275,13 @@ def _pick_alternate_program(
     instrument_id: str,
     avoid: set[int],
     generation_seed: int,
+    *,
+    timbre_context: dict | None = None,
 ) -> int | None:
-    options = [p for p in timbre_programs(instrument_id) if p not in avoid]
+    ctx = timbre_context or {}
+    options = [
+        p for p in timbre_programs(instrument_id, **ctx) if p not in avoid
+    ]
     if not options:
         return None
     salt = hash(instrument_id) % 97
@@ -238,7 +295,9 @@ def _separate_lead_programs(
     *,
     generation_seed: int,
     prefer_alt_on: str,
+    timbre_context: dict | None = None,
 ) -> None:
+    ctx = timbre_context or {}
     """Dos capas lead activas no comparten gm_program."""
     left = by_id.get(a)
     right = by_id.get(b)
@@ -247,16 +306,20 @@ def _separate_lead_programs(
     if left.gm_program != right.gm_program:
         return
     avoid = {left.gm_program}
-    alt = _pick_alternate_program(prefer_alt_on, avoid, generation_seed + hash((a, b)))
+    alt = _pick_alternate_program(
+        prefer_alt_on, avoid, generation_seed + hash((a, b)), timbre_context=ctx,
+    )
     if alt is None:
         other = b if prefer_alt_on == a else a
-        alt = _pick_alternate_program(other, avoid, generation_seed + hash((b, a)))
+        alt = _pick_alternate_program(
+            other, avoid, generation_seed + hash((b, a)), timbre_context=ctx,
+        )
         if alt is None:
             return
-        prog, name = resolve_timbre(other, alt, generation_seed=generation_seed)
+        prog, name = resolve_timbre(other, alt, generation_seed=generation_seed, **ctx)
         by_id[other] = by_id[other].model_copy(update={"gm_program": prog, "display_name": name})
         return
-    prog, name = resolve_timbre(prefer_alt_on, alt, generation_seed=generation_seed)
+    prog, name = resolve_timbre(prefer_alt_on, alt, generation_seed=generation_seed, **ctx)
     by_id[prefer_alt_on] = by_id[prefer_alt_on].model_copy(update={"gm_program": prog, "display_name": name})
 
 
@@ -264,11 +327,14 @@ def _separate_melody_chord_stab_programs(
     by_id: dict[str, InstrumentAssignment],
     *,
     generation_seed: int,
+    timbre_context: dict | None = None,
 ) -> None:
     """melody y chord_stab activos no pueden compartir gm_program."""
     _separate_lead_programs(
         by_id, "melody", "chord_stab",
-        generation_seed=generation_seed, prefer_alt_on="chord_stab",
+        generation_seed=generation_seed,
+        prefer_alt_on="chord_stab",
+        timbre_context=timbre_context,
     )
 
 
@@ -276,28 +342,30 @@ def _separate_melody_countermelody_programs(
     by_id: dict[str, InstrumentAssignment],
     *,
     generation_seed: int,
+    timbre_context: dict | None = None,
 ) -> None:
     """melody y countermelody activos no pueden compartir gm_program."""
     _separate_lead_programs(
         by_id, "melody", "countermelody",
-        generation_seed=generation_seed, prefer_alt_on="countermelody",
+        generation_seed=generation_seed,
+        prefer_alt_on="countermelody",
+        timbre_context=timbre_context,
     )
-    mel = by_id.get("melody")
-    stab = by_id.get("chord_stab")
-    if not mel or not stab or not mel.active or not stab.active:
-        return
-    if mel.gm_program != stab.gm_program:
-        return
-    avoid = {mel.gm_program}
-    alt = _pick_alternate_program("chord_stab", avoid, generation_seed + 31)
-    if alt is None:
-        alt = _pick_alternate_program("melody", avoid, generation_seed + 37)
-        if alt is not None:
-            prog, name = resolve_timbre("melody", alt, generation_seed=generation_seed)
-            by_id["melody"] = mel.model_copy(update={"gm_program": prog, "display_name": name})
-        return
-    prog, name = resolve_timbre("chord_stab", alt, generation_seed=generation_seed)
-    by_id["chord_stab"] = stab.model_copy(update={"gm_program": prog, "display_name": name})
+
+
+def _separate_melody_echo_synth_programs(
+    by_id: dict[str, InstrumentAssignment],
+    *,
+    generation_seed: int,
+    timbre_context: dict | None = None,
+) -> None:
+    """melody y echo_synth activos no pueden compartir gm_program (capa de eco)."""
+    _separate_lead_programs(
+        by_id, "melody", "echo_synth",
+        generation_seed=generation_seed,
+        prefer_alt_on="echo_synth",
+        timbre_context=timbre_context,
+    )
 
 
 def _apply_style_profile_avoids(
@@ -305,7 +373,9 @@ def _apply_style_profile_avoids(
     profile: MusicalStyleProfile | None,
     *,
     generation_seed: int,
+    timbre_context: dict | None = None,
 ) -> None:
+    ctx = timbre_context or {}
     """Evita gm_program que coinciden con la lista avoid del perfil LLM."""
     if not profile or not profile.avoid:
         return
@@ -318,9 +388,11 @@ def _apply_style_profile_avoids(
             continue
         if item.gm_program not in bad_programs:
             continue
-        alt = _pick_alternate_program(iid, bad_programs, generation_seed + hash(iid))
+        alt = _pick_alternate_program(
+            iid, bad_programs, generation_seed + hash(iid), timbre_context=ctx,
+        )
         if alt is not None:
-            prog, name = resolve_timbre(iid, alt, generation_seed=generation_seed)
+            prog, name = resolve_timbre(iid, alt, generation_seed=generation_seed, **ctx)
             by_id[iid] = item.model_copy(update={"gm_program": prog, "display_name": name})
 
 
@@ -347,6 +419,12 @@ def validate_orchestration(
         use_case=use_case,
         energy_level=energy_level,
     )
+    timbre_context = {
+        "genre_tags": genre_tags,
+        "mood": "",
+        "use_case": use_case,
+        "composition_archetype": archetype,
+    }
 
     plan = enrich_orchestration_from_strategies(
         plan,
@@ -360,8 +438,15 @@ def validate_orchestration(
     )
     from cadence.schemas.song_state import CreativeVariationBounds
 
+    from cadence.music.style_profile import build_genre_mix
+
+    genre_mix = build_genre_mix(proposal_tags=genre_tags) if genre_tags else {}
     max_optional, max_lead = max_optional_budget(
-        use_case, energy_level, composition_archetype=archetype,
+        use_case,
+        energy_level,
+        composition_archetype=archetype,
+        genre_tags=genre_tags,
+        genre_mix=genre_mix,
     )
     allowed_pool: set[str] | None = None
     if isinstance(creative_variation, CreativeVariationBounds):
@@ -382,7 +467,9 @@ def validate_orchestration(
         if item.instrument_id not in known or not item.active:
             continue
         by_id[item.instrument_id] = _assignment_from_timbre(
-            item, generation_seed=generation_seed,
+            item,
+            generation_seed=generation_seed,
+            timbre_context=timbre_context,
         )
 
     suppress_drums = percussion_suppressed(
@@ -404,20 +491,34 @@ def validate_orchestration(
                 ),
                 generation_seed=generation_seed,
                 default_mix=default_mix[core],
+                timbre_context=timbre_context,
             )
+
+    from cadence.music.genre_orchestration import optional_layer_genre_score
 
     optionals = [iid for iid in by_id if iid not in CORE_INSTRUMENTS and iid in known]
     if len(optionals) > max_optional:
-        to_remove: set[str] = set()
-        for iid in _TRIM_PRIORITY:
-            if len(optionals) - len(to_remove) <= max_optional:
-                break
-            if iid in protected:
-                continue
-            if iid in optionals:
-                to_remove.add(iid)
-        for iid in to_remove:
-            del by_id[iid]
+        trim_candidates = [
+            iid for iid in optionals
+            if iid not in protected
+        ]
+        trim_candidates.sort(
+            key=lambda iid: (
+                optional_layer_genre_score(
+                    iid,
+                    genre_tags=genre_tags,
+                    genre_mix=genre_mix,
+                    composition_archetype=archetype,
+                    energy_level=energy_level,
+                ),
+                _TRIM_PRIORITY.index(iid) if iid in _TRIM_PRIORITY else 99,
+            ),
+        )
+        while len(optionals) > max_optional and trim_candidates:
+            victim = trim_candidates.pop(0)
+            if victim in by_id:
+                del by_id[victim]
+                optionals.remove(victim)
 
     from cadence.music.harmonic_coherence import apply_lead_support_cap
 
@@ -451,14 +552,22 @@ def validate_orchestration(
         by_id,
         style_profile,
         generation_seed=generation_seed,
+        timbre_context=timbre_context,
     )
     _separate_melody_chord_stab_programs(
         by_id,
         generation_seed=generation_seed,
+        timbre_context=timbre_context,
     )
     _separate_melody_countermelody_programs(
         by_id,
         generation_seed=generation_seed,
+        timbre_context=timbre_context,
+    )
+    _separate_melody_echo_synth_programs(
+        by_id,
+        generation_seed=generation_seed,
+        timbre_context=timbre_context,
     )
 
     ordered = [
@@ -472,6 +581,7 @@ def validate_orchestration(
         energy_level=energy_level,
         use_case=use_case,
         generation_seed=generation_seed,
+        composition_archetype=archetype,
     )
     return plan.model_copy(update={
         "instruments": ordered,

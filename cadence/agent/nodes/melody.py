@@ -22,6 +22,11 @@ from cadence.music.narrative_anchors import format_anchors_for_llm
 from cadence.music.creative_variation import format_variation_for_llm
 from cadence.music.seed_policy import node_temperature, seed_for_state
 from cadence.music.section_refs import format_section_ids_for_llm
+from cadence.music.melody_density_policy import (
+    is_dense_melody_target,
+    melody_notes_per_bar_target,
+)
+from cadence.music.melody_identity import melody_instrument_from_state
 from cadence.music.style_archetype import get_composition_archetype
 
 
@@ -166,7 +171,8 @@ def compose_melody_track(state: SongState) -> Track:
         "al menos 3 notas o contorno inverso.\n"
         "- Prefiere movimiento conjunto (±1 grado); saltos máx 2 grados "
         "(≤4 semitonos) salvo en climax.\n"
-        "- En drop/climax/build-up: máximo 10% silencios (is_rest).\n"
+        f"- En drop/climax/build-up: máximo {int((0.05 if dense_target else 0.10) * 100)}% silencios (is_rest).\n"
+        f"- Objetivo global: ≥{notes_target} notas por compás en secciones activas densas.\n"
         "- En secciones density>=0.7: frases de 2 compases, notas de 1-2 steps.\n"
         "- Registro objetivo C4–C6 (octave_offset 0 o +1 en climax)."
         f"\n- Variante melódica (subsemilla {phrase_variant}): "
@@ -227,11 +233,25 @@ def compose_melody_track(state: SongState) -> Track:
     dev_block = _development_hint(state)
 
     archetype = get_composition_archetype(state)
+    plan = state.get("orchestration_plan")
+    melody_texture = (
+        getattr(plan, "melody_texture", "balanced") if plan is not None else "balanced"
+    ) or "balanced"
+    dense_target = is_dense_melody_target(
+        archetype,
+        energy_level=energy_level,
+        melody_texture=melody_texture,
+        use_case=intent.use_case,
+    )
+    notes_target = melody_notes_per_bar_target(
+        archetype, energy_level, melody_texture=melody_texture, use_case=intent.use_case,
+    )
     archetype_hint = ""
-    if archetype == "chiptune_dance":
+    if archetype == "chiptune_dance" or dense_target:
+        label = "CHIPTUNE/DANCE" if archetype == "chiptune_dance" else "DENSE DANCE"
         archetype_hint = (
-            "\nArquetipo CHIPTUNE/DANCE: melodía muy densa (≥6-8 notas/compás en climax), "
-            "notas cortas (1-2 steps), saltos de hasta 7 semitonos, silencios ≤6%.\n"
+            f"\nArquetipo {label}: melodía muy densa (≥{notes_target} notas/compás en climax), "
+            "notas cortas (1-2 steps), saltos de hasta 7 semitonos, silencios ≤5%.\n"
         )
     elif archetype == "compact_action":
         archetype_hint = (
@@ -245,7 +265,6 @@ def compose_melody_track(state: SongState) -> Track:
         )
 
     harmonic_stack_hint = ""
-    plan = state.get("orchestration_plan")
     if plan and proposal:
         from cadence.music.harmonic_coherence import (
             active_instrument_ids_from_plan,
@@ -279,6 +298,8 @@ def compose_melody_track(state: SongState) -> Track:
                 section_intent,
                 use_case=intent.use_case,
                 composition_archetype=archetype,
+                energy_level=energy_level,
+                melody_texture=melody_texture,
             ) * 100)
             seg_note = (
                 f", {len(dev.segments)} micro-arcos" if dev.segments else ""
@@ -352,12 +373,14 @@ def compose_melody_track(state: SongState) -> Track:
             current_t += bars * steps_per_bar * step_ms
             beat_index += bars * steps_per_bar
 
+    instrument_name, gm_program = melody_instrument_from_state(state)
     return Track(
         id="melody",
-        instrument="Lead Synth",
+        instrument=instrument_name,
         instrument_id="melody",
         midi_channel=0,
         role="lead",
+        gm_program=gm_program,
         events=all_events,
     )
 

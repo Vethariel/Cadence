@@ -1,4 +1,5 @@
 from cadence.agent.nodes.rhythm import _generate_bass_track
+from cadence.music.narrative_contract import section_intent_map_from_state
 from cadence.instruments.context import ComposeContext
 from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.schemas.song_state import Track
@@ -13,7 +14,7 @@ def _compose_bass(ctx: ComposeContext) -> Track:
         bpm=ctx.bpm,
         key=ctx.key,
         mode=ctx.mode,
-        narrative=ctx.state.get("narrative"),
+        intent_map=section_intent_map_from_state(ctx.state, context="bass"),
         harmony=ctx.state.get("harmony"),
         bass_pattern_id=strategies.bass_pattern if strategies else None,
     )

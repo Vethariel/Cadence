@@ -93,10 +93,21 @@ def test_different_seeds_pick_different_strategies():
 
 
 def test_energy_biases_drum_pattern():
+    from cadence.music.pattern_batch_context import (
+        _combo_diversity_window,
+        _recent_patterns,
+    )
+
+    _recent_patterns.set(None)
+    _combo_diversity_window.set(0)
     low = select_strategies(0, [], "minor", "loop", 1)
     high = select_strategies(0, [], "minor", "game", 5)
-    assert low.drum_pattern in ("default", "halftime", "house")
-    assert high.drum_pattern in ("dubstep", "breakbeat", "dnb", "industrial", "techno")
+    from cadence.music.pattern_registry import pattern_family
+
+    assert pattern_family(low.drum_pattern) in ("default", "halftime", "house")
+    assert pattern_family(high.drum_pattern) in (
+        "dubstep", "breakbeat", "dnb", "industrial", "techno",
+    )
     assert high.harmony_pool in ("aggressive", "dance", "game")
     print("✓ test_energy_biases_drum_pattern OK")
 

@@ -380,6 +380,19 @@ class DevelopmentPlan(BaseModel):
     )
 
 
+class PatternIntent(BaseModel):
+    """Intención de patrones — prioridades derivadas de genre_mix (pre-selección por seed)."""
+    genre_mix: dict[str, float] = Field(default_factory=dict)
+    drum_candidates: list[str] = Field(default_factory=list)
+    bass_candidates: list[str] = Field(default_factory=list)
+    harmony_candidates: list[str] = Field(default_factory=list)
+    layer_bias: dict[str, list[str] | str] = Field(default_factory=dict)
+    mood: str = ""
+    use_case: str = "game"
+    energy_level: int = 3
+    composition_archetype: str | None = None
+
+
 class GenerationStrategies(BaseModel):
     """Estrategias compositivas elegidas por generation_seed."""
     generation_seed: int = 0
@@ -392,6 +405,25 @@ class GenerationStrategies(BaseModel):
     pluck_pattern: str = "eighth"
     counter_pattern: str = "offbeat_sync"
     echo_source: str = "auto"
+
+
+class PatternFieldAudit(BaseModel):
+    """Auditoría por campo: candidatos, pesos y motivo de elección."""
+    field: str
+    candidates: list[str] = Field(default_factory=list)
+    weights: dict[str, float] = Field(default_factory=dict)
+    chosen: str = ""
+    selection_reason: str = ""
+
+
+class PatternSelectionAudit(BaseModel):
+    """Registro exportable de decisiones de patrón (strategy_planner)."""
+    generation_seed: int = 0
+    combo_attempt: int = 0
+    combo_diversity_window: int = 0
+    combo_avoided_recent: bool = False
+    rhythm_combo: str = ""
+    fields: list[PatternFieldAudit] = Field(default_factory=list)
 
 
 class HarmonyPlan(BaseModel):
@@ -427,6 +459,8 @@ class ValidationResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     passed: bool = False
+    passed_technical: bool | None = None
+    passed_perceptual: bool | None = None
 
 
 # ── Estado principal del grafo ────────────────────────────────
@@ -447,10 +481,14 @@ class SongState(MessagesState):
     creative_variation: Optional[CreativeVariationBounds] = None
     node_seeds: Optional[NodeSeeds] = None
     composition_archetype: Optional[str] = None
+    archetype_reason: Optional[str] = None
     structure: Optional[SongStructure] = None
     harmony: Optional[HarmonyPlan] = None
     development: Optional[DevelopmentPlan] = None
     strategies: Optional[GenerationStrategies] = None
+    genre_mix: Optional[dict[str, float]] = None
+    pattern_intent: Optional[PatternIntent] = None
+    pattern_selection_audit: Optional[PatternSelectionAudit] = None
     orchestration_plan: Optional[OrchestrationPlan] = None
     style_coherence: Optional[StyleCoherenceVerdict] = None
     style_coherence_retries: int = 0

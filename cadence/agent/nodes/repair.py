@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from cadence.schemas.song_state import SongState
+from cadence.music.orchestral_arrangement import orchestral_repair_layer_ids
+from cadence.music.style_archetype import get_composition_archetype
 
 RHYTHM_LAYERS = {"drums", "bass", "pad", "fx_riser", "perc_aux"}
 MELODY_LAYERS = {"melody", "countermelody", "echo_synth"}
@@ -16,6 +18,7 @@ MELODY_ONLY_CHECKS = frozenset({
     "melody_loop",
     "melody_leaps",
     "melody_rest_density",
+    "melody_notes_per_bar",
 })
 INSTRUMENTAL_CHECKS = frozenset({
     "instrumental_richness",
@@ -78,9 +81,15 @@ def determine_repair_plan(state: SongState) -> dict:
     layers: set[str] = set()
     non_melody = failed - MELODY_ONLY_CHECKS
 
+    archetype = get_composition_archetype(state)
+
     if failed & INSTRUMENTAL_CHECKS:
         actions.append("restore_optional_layers")
-        layers |= set(optional_layers_for_repair(state))
+        if archetype == "orchestral_boss":
+            layers |= set(orchestral_repair_layer_ids())
+            layers |= {"drums", "bass"}
+        else:
+            layers |= set(optional_layers_for_repair(state))
 
     if "dynamic_range" in failed:
         actions.append("recalc_dynamic_range")
@@ -136,7 +145,10 @@ def determine_repair_plan(state: SongState) -> dict:
     melody_only = layers <= MELODY_LAYERS and layers
     if melody_only and non_melody:
         if failed & INSTRUMENTAL_CHECKS:
-            layers |= set(optional_layers_for_repair(state))
+            if archetype == "orchestral_boss":
+                layers |= set(orchestral_repair_layer_ids()) | {"drums", "bass"}
+            else:
+                layers |= set(optional_layers_for_repair(state))
             target = "arrangement_planner"
             if "restore_optional_layers" not in actions:
                 actions.append("restore_optional_layers")

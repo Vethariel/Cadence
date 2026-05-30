@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from cadence.music.style_archetype import get_composition_archetype
+from cadence.music.style_archetype import get_archetype_reason, get_composition_archetype
 from cadence.music.quality_status import compute_quality_metadata
 from cadence.music.style_profile import effective_genre_tags
 from cadence.schemas.song_state import SongState
@@ -152,6 +152,7 @@ def _build_rsong(state: SongState) -> dict:
         },
         "game_meta": {
             "composition_archetype": get_composition_archetype(state),
+            "archetype_reason": get_archetype_reason(state),
             "use_case": intent.use_case,
             "loop_point_ms": _compute_loop_point(state),
             "intensity_curve": _compute_intensity_curve(state),
@@ -206,6 +207,23 @@ def _build_rsong(state: SongState) -> dict:
                     "strategies": strategies.model_dump(),
                 }
                 if strategies
+                else {}
+            ),
+            **(
+                {
+                    "pattern_selection_audit": state["pattern_selection_audit"].model_dump(),
+                }
+                if state.get("pattern_selection_audit")
+                else {}
+            ),
+            **(
+                {"genre_mix": state.get("genre_mix")}
+                if state.get("genre_mix")
+                else {}
+            ),
+            **(
+                {"pattern_intent": state["pattern_intent"].model_dump()}
+                if state.get("pattern_intent")
                 else {}
             ),
             **(
@@ -277,6 +295,17 @@ def _build_rsong(state: SongState) -> dict:
         "validation": {
             "score": validation.score,
             "passed": validation.passed,
+            "passed_technical": (
+                validation.passed_technical
+                if validation.passed_technical is not None
+                else validation.passed
+            ),
+            "passed_perceptual": (
+                validation.passed_perceptual
+                if validation.passed_perceptual is not None
+                else validation.passed
+            ),
+            "score_threshold": 0.8,  # alineado con validator.PASS_SCORE_THRESHOLD
             "retry_count": state.get("retry_count", 0),
             "errors": list(validation.errors),
             "warnings": list(validation.warnings),

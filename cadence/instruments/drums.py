@@ -1,4 +1,5 @@
 from cadence.agent.nodes.rhythm import _generate_drum_track
+from cadence.music.narrative_contract import section_intent_map_from_state
 from cadence.instruments.context import ComposeContext
 from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.schemas.song_state import Track
@@ -12,7 +13,7 @@ def _compose_drums(ctx: ComposeContext) -> Track:
         bars_per_section=structure.bars_per_section,
         bpm=ctx.bpm,
         genre_tags=ctx.genre_tags,
-        narrative=ctx.state.get("narrative"),
+        intent_map=section_intent_map_from_state(ctx.state, context="drums"),
         drum_pattern_id=strategies.drum_pattern if strategies else None,
     )
     return track.model_copy(update={"instrument_id": "drums"})

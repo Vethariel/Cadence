@@ -11,7 +11,7 @@ def _compose_melody(ctx: ComposeContext) -> Track:
 
 register(InstrumentDefinition(
     instrument_id="melody",
-    display_name="Lead Synth",
+    display_name="Melody",
     role="lead",
     midi_channel=0,
     requires_llm=True,

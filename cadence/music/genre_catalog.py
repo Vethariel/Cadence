@@ -234,3 +234,67 @@ def format_genre_catalog_for_llm(*, compact: bool = True) -> str:
 
 def genres_in_category(category: str) -> list[str]:
     return list(GENRE_CATALOG.get(category, []))
+
+
+_GENRE_TO_CATEGORY: dict[str, str] | None = None
+
+
+def _build_genre_to_category() -> dict[str, str]:
+    index: dict[str, str] = {}
+    for category, genres in GENRE_CATALOG.items():
+        for g in genres:
+            index[g.lower()] = category
+            index[normalize_genre(g).lower()] = category
+    for alias, canonical in GENRE_ALIASES.items():
+        cat = index.get(canonical.lower())
+        if cat:
+            index[alias.lower()] = cat
+    return index
+
+
+def category_for_genre(genre: str) -> str | None:
+    """Categoría del catálogo para un género canónico o alias."""
+    global _GENRE_TO_CATEGORY
+    if _GENRE_TO_CATEGORY is None:
+        _GENRE_TO_CATEGORY = _build_genre_to_category()
+    key = normalize_genre(genre).lower()
+    return _GENRE_TO_CATEGORY.get(key)
+
+
+def category_mix_from_genres(genres: list[str]) -> dict[str, float]:
+    """Pesos por categoría a partir de etiquetas (sin normalizar a suma 1)."""
+    weights: dict[str, float] = {}
+    for tag in genres:
+        norm = normalize_genre(tag)
+        cat = category_for_genre(norm)
+        if cat:
+            weights[cat] = weights.get(cat, 0.0) + 1.0
+    total = sum(weights.values())
+    if total <= 0:
+        return {}
+    return {c: round(w / total, 4) for c, w in weights.items()}
+
+
+def category_mix_from_genre_mix(genre_mix: dict[str, float]) -> dict[str, float]:
+    """Agrega genre_mix canónico en pesos por categoría del catálogo."""
+    weights: dict[str, float] = {}
+    for genre, w in genre_mix.items():
+        if w <= 0:
+            continue
+        cat = category_for_genre(genre)
+        if cat:
+            weights[cat] = weights.get(cat, 0.0) + w
+    total = sum(weights.values())
+    if total <= 0:
+        return {}
+    return {c: round(v / total, 4) for c, v in weights.items()}
+
+
+def dominant_category(
+    category_mix: dict[str, float],
+    *,
+    default: str | None = None,
+) -> str | None:
+    if not category_mix:
+        return default
+    return max(category_mix.items(), key=lambda x: x[1])[0]

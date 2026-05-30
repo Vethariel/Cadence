@@ -1,4 +1,5 @@
 from cadence.agent.nodes.pad import _generate_pad_track
+from cadence.music.narrative_contract import section_intent_map_from_state
 from cadence.instruments.context import ComposeContext
 from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.schemas.song_state import Track
@@ -22,7 +23,7 @@ def _compose_pad(ctx: ComposeContext) -> Track | None:
         bars_per_section=structure.bars_per_section,
         bpm=ctx.bpm,
         harmony=harmony,
-        narrative=ctx.state.get("narrative"),
+        intent_map=section_intent_map_from_state(ctx.state, context="pad"),
     )
     # Filtrar eventos a secciones activas
     events = [e for e in track.events if e.section in active]

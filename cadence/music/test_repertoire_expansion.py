@@ -9,14 +9,15 @@ from cadence.music.instrument_patterns import (
     pluck_steps,
     stab_steps,
 )
+from cadence.music.pattern_registry import pattern_family
 from cadence.music.strategy_pools import HARMONY_POOL, get_harmony_templates, select_strategies
 from cadence.instruments.registry import get_instrument, list_instruments
 
 
 def test_arp_patterns_expanded():
     assert len(ARP_PATTERNS) >= 10
-    assert "sixteenth" in ARP_PATTERNS
-    seq = build_arp_pitch_sequence([48, 52, 55], "cascade")
+    assert any(pattern_family(p) == "sixteenth" for p in ARP_PATTERNS)
+    seq = build_arp_pitch_sequence([48, 52, 55], "cascade_a")
     assert len(seq) >= 6
     assert resolve_arp_pattern("invalid", 42) in ARP_PATTERNS
 
@@ -30,9 +31,9 @@ def test_harmony_pools_expanded():
 
 def test_instrument_pattern_pools():
     assert len(STAB_PATTERN_POOL) >= 9
-    assert "sixteenth" in STAB_PATTERN_POOL
-    assert "organ_offbeat" in STAB_PATTERN_POOL
-    assert "orchestral_sync" in STAB_PATTERN_POOL
+    assert any(pattern_family(p) == "sixteenth" for p in STAB_PATTERN_POOL)
+    assert any(pattern_family(p) == "organ_offbeat" for p in STAB_PATTERN_POOL)
+    assert any(pattern_family(p) == "orchestral_sync" for p in STAB_PATTERN_POOL)
     assert stab_steps("four_on", 0) != stab_steps("sparse", 0)
     assert len(stab_steps("sixteenth", 0)) == 16
     assert len(pluck_steps("sixteenth", 0)) > len(pluck_steps("sparse", 0))
@@ -51,7 +52,9 @@ def test_strategies_include_layer_patterns():
 
 def test_high_energy_repertoire_prefers_dense_patterns():
     s = select_strategies(42, [], "minor", "game", 5)
-    assert s.arp_pattern in ("sixteenth", "cascade", "broken", "syncopated", "octave")
+    assert pattern_family(s.arp_pattern) in (
+        "sixteenth", "cascade", "broken", "syncopated", "octave",
+    )
     from cadence.music.repertoire_signals import harmony_pool_priority
     top = harmony_pool_priority(5, "game")[:4]
     assert s.harmony_pool in top

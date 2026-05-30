@@ -33,6 +33,9 @@ class GenerateResponse(BaseModel):
     rsong: dict
     knowledge_level: str
     validation_score: float
+    validation_passed: bool
+    validation_passed_technical: bool
+    validation_passed_perceptual: bool
     quality_status: str
     request_id: str
     retry_count: int
@@ -90,6 +93,7 @@ async def generate(request: GenerateRequest):
         "arrangement": None,
         "generation_seed": 0,
         "composition_archetype": None,
+        "archetype_reason": None,
         "structure": None,
         "tracks": [],
         "validation_result": None,
@@ -111,11 +115,15 @@ async def generate(request: GenerateRequest):
     key = f"{proposal.key} {proposal.mode}" if proposal else "C minor"
 
     quality = (final_state.get("rsong_data") or {}).get("quality", {})
+    validation = final_state.get("validation_result")
     return GenerateResponse(
         export_path=final_state["export_path"],
         rsong=final_state["rsong_data"],
         knowledge_level=final_state["intent"].knowledge_level,
-        validation_score=final_state["validation_result"].score,
+        validation_score=validation.score if validation else 0.0,
+        validation_passed=bool(validation.passed) if validation else False,
+        validation_passed_technical=bool(quality.get("validation_passed_technical", False)),
+        validation_passed_perceptual=bool(quality.get("validation_passed_perceptual", False)),
         quality_status=quality.get("quality_status", "degraded"),
         request_id=final_state.get("request_id") or request_id,
         retry_count=final_state.get("retry_count", 0),

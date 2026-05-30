@@ -36,6 +36,7 @@ def list_productions():
             continue
         header = rsong.get("header", {})
         validation = rsong.get("validation", {})
+        quality = rsong.get("quality", {})
         items.append({
             "id": path.name,
             "filename": path.name,
@@ -45,6 +46,10 @@ def list_productions():
             "duration_ms": header.get("duration_ms"),
             "total_bars": header.get("total_bars"),
             "validation_score": validation.get("score"),
+            "validation_passed": validation.get("passed"),
+            "validation_passed_technical": quality.get("validation_passed_technical"),
+            "validation_passed_perceptual": quality.get("validation_passed_perceptual"),
+            "quality_status": quality.get("quality_status"),
             "track_count": len(rsong.get("tracks", [])),
             "has_midi": path.with_suffix(".mid").exists(),
             "created_at": datetime.fromtimestamp(

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from cadence.config import settings
 from cadence.music.seed_policy import node_temperature
 from cadence.music.narrative_contract import _normalize_section_id
+from cadence.music.structure_templates import structure_planner_penalty_hint
 from cadence.schemas.song_state import SongState, SongStructure
 
 
@@ -147,13 +148,18 @@ def structure_planner_node(state: SongState) -> dict:
         "(total_bars * beats_per_bar * 60000) / BPM. "
         "Si hay guion narrativo, respeta density y narrative_role al decidir "
         "cuántos compases tiene cada sección. "
+        "Si el brief pide loop, cutscene, boss o edm y el contrato aún parece pop genérico, "
+        "NO expandas a intro-verse-chorus-outro: respeta los IDs del contrato y asigna compases "
+        "como si la forma fuera la del prompt (más build-up/drop, más beds, más loop). "
         "Responde SOLO con el objeto estructurado."
     ))
 
+    penalty = structure_planner_penalty_hint(state)
     human = HumanMessage(content=(
         f"{context}\n\n"
         f"{contract_ctx}\n"
         f"{narrative_ctx}\n"
+        f"{penalty}\n"
         "Define compases por sección según density y narrative_role. "
         "sections DEBE ser la lista exacta del contrato en el mismo orden."
     ))

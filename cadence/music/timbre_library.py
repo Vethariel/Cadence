@@ -152,16 +152,29 @@ BROWSER_SOUNDFONT = "A320U"
 # Se fusionan con las paletas en instrument_catalog.TIMBRES_BY_INSTRUMENT
 EXTENDED_TIMBRES: dict[str, list[tuple[int, str, str]]] = {
     "melody": [
+        # piano — lead acústico/eléctrico
+        (0, "Acoustic Grand Piano", "cinematic,cutscene,ambient"),
+        (1, "Bright Acoustic Piano", "pop,cinematic,game"),
+        (2, "Electric Grand Piano", "pop,dance,game"),
+        (3, "Honky-tonk Piano", "retro,game,country"),
+        (4, "Electric Piano 1", "cinematic,dance,pop,jazz"),
+        (5, "Electric Piano 2", "cinematic,dance,pop,jazz"),
+        # guitarra — lead (no ambient etéreo puro)
+        (24, "Nylon Guitar", "folk,game,cutscene,pop"),
+        (25, "Steel Guitar", "folk,country,cinematic"),
+        (26, "Jazz Guitar", "jazz,cinematic,cutscene"),
+        (27, "Clean Electric Guitar", "rock,pop,game,platform"),
+        (28, "Muted Guitar", "funk,game,dance"),
+        (29, "Overdriven Guitar", "rock,dubstep,game,metal"),
+        (30, "Distortion Guitar", "rock,metal,game,boss"),
+        (31, "Guitar Harmonics", "ambient,ethereal,cinematic"),
         # chiptune / Spider Dance
         (6, "Harpsichord", "chiptune,dance"),
         (79, "Ocarina", "chiptune,dance"),
         (82, "Lead Calliope", "chiptune,synth"),
         (83, "Lead Chiff", "chiptune,synth"),
         (84, "Lead Charang", "dubstep,synth"),
-        # touhou / Bad Apple
-        (4, "Electric Piano 1", "cinematic,dance"),
-        (5, "Electric Piano 2", "cinematic,dance"),
-        (11, "Vibraphone", "cinematic,ambient"),
+        (11, "Vibraphone", "cinematic,ambient,jazz"),
         (15, "Dulcimer", "cinematic,dance"),
         # boss / Asgore
         (40, "Violin", "orchestral,boss"),
@@ -241,45 +254,68 @@ EXTENDED_TIMBRES: dict[str, list[tuple[int, str, str]]] = {
 }
 
 
-# Timbres ancla por estilo (ex-PALETTES) — genre-defaults en el catálogo
+# Timbres ancla por estilo (ex-PALETTES) — genre-defaults en el catálogo.
+# echo_synth usa programa distinto a melody en cada paleta (evita duplicar el lead).
 STYLE_PALETTES: dict[str, dict[str, tuple[int, str]]] = {
     "chiptune": {
         "melody": (80, "Lead Square"),
-        "countermelody": (81, "Lead Saw"),
-        "echo_synth": (80, "Lead Square"),
+        "countermelody": (79, "Ocarina"),
+        "echo_synth": (88, "Pad New Age"),
+        "arp_synth": (10, "Music Box"),
+        "bass": (33, "Finger Bass"),
+        "pad": (89, "Pad Warm"),
+        "chord_stab": (62, "Synth Brass 1"),
+        "perc_aux": (115, "Melodic Tom"),
+        "fx_riser": (119, "Reverse Cymbal"),
+    },
+    "chiptune_hybrid": {
+        "melody": (6, "Harpsichord"),
+        "countermelody": (4, "Electric Piano 1"),
+        "echo_synth": (79, "Ocarina"),
         "arp_synth": (12, "Marimba"),
-        "bass": (39, "Synth Bass 2"),
+        "bass": (34, "Pick Bass"),
         "pad": (88, "Pad New Age"),
-        "chord_stab": (81, "Lead Saw"),
+        "chord_stab": (15, "Dulcimer"),
         "perc_aux": (115, "Melodic Tom"),
         "fx_riser": (119, "Reverse Cymbal"),
     },
     "techno_industrial": {
-        "melody": (81, "Lead Saw"),
+        "melody": (81, "Lead Sawtooth"),
         "countermelody": (82, "Lead Calliope"),
-        "echo_synth": (87, "Lead 8va"),
+        "echo_synth": (87, "Lead 5th"),
         "arp_synth": (98, "Crystal"),
         "bass": (38, "Synth Bass 1"),
         "pad": (89, "Pad Warm"),
-        "chord_stab": (62, "Synth Brass"),
+        "chord_stab": (62, "Synth Brass 1"),
         "perc_aux": (116, "Synth Drum"),
         "fx_riser": (119, "Reverse Cymbal"),
     },
     "ambient_cinematic": {
-        "melody": (88, "Pad Voice"),
-        "countermelody": (53, "Voice Oohs"),
-        "echo_synth": (92, "Space Voice"),
+        "melody": (0, "Acoustic Grand Piano"),
+        "countermelody": (73, "Flute"),
+        "echo_synth": (99, "FX Atmosphere"),
         "arp_synth": (14, "Tubular Bells"),
         "bass": (32, "Acoustic Bass"),
-        "pad": (89, "Pad Warm"),
-        "chord_stab": (48, "String Ensemble"),
+        "pad": (94, "Halo Pad"),
+        "chord_stab": (48, "String Ensemble 1"),
         "perc_aux": (117, "Taiko Drum"),
         "fx_riser": (95, "Pad Sweep"),
     },
+    "ambient_loop": {
+        "melody": (4, "Electric Piano 1"),
+        "countermelody": (54, "Synth Voice"),
+        "echo_synth": (102, "FX Echoes"),
+        "arp_synth": (9, "Glockenspiel"),
+        "bass": (38, "Synth Bass 1"),
+        "pad": (92, "Pad Bowed"),
+        "chord_stab": (91, "Pad Choir"),
+        "perc_aux": (117, "Taiko Drum"),
+        "fx_riser": (99, "FX Atmosphere"),
+    },
     "orchestral_game": {
-        "melody": (48, "String Ensemble"),
-        "countermelody": (53, "Voice Oohs"),
-        "echo_synth": (50, "Synth Strings"),
+        "melody": (48, "String Ensemble 1"),
+        "countermelody": (73, "Flute"),
+        "echo_synth": (46, "Orchestral Harp"),
         "arp_synth": (46, "Orchestral Harp"),
         "bass": (43, "Contrabass"),
         "pad": (49, "String Tremolo"),
@@ -287,29 +323,71 @@ STYLE_PALETTES: dict[str, dict[str, tuple[int, str]]] = {
         "perc_aux": (117, "Taiko Drum"),
         "fx_riser": (119, "Reverse Cymbal"),
     },
+    "orchestral_boss": {
+        "melody": (40, "Violin"),
+        "countermelody": (52, "Choir Aahs"),
+        "echo_synth": (50, "Synth Strings 1"),
+        "arp_synth": (46, "Orchestral Harp"),
+        "bass": (43, "Contrabass"),
+        "pad": (48, "String Ensemble 1"),
+        "chord_stab": (55, "Orchestra Hit"),
+        "perc_aux": (117, "Taiko Drum"),
+        "fx_riser": (100, "FX Brightness"),
+    },
+    "cinematic_cutscene": {
+        "melody": (1, "Bright Acoustic Piano"),
+        "countermelody": (73, "Flute"),
+        "echo_synth": (92, "Space Voice"),
+        "arp_synth": (11, "Vibraphone"),
+        "bass": (32, "Acoustic Bass"),
+        "pad": (94, "Halo Pad"),
+        "chord_stab": (48, "String Ensemble 1"),
+        "perc_aux": (117, "Taiko Drum"),
+        "fx_riser": (95, "Pad Sweep"),
+    },
     "dance_game": {
-        "melody": (7, "Clavi"),
-        "countermelody": (81, "Lead Saw"),
-        "echo_synth": (80, "Lead Square"),
+        "melody": (7, "Clavinet"),
+        "countermelody": (27, "Clean Electric Guitar"),
+        "echo_synth": (98, "Crystal"),
         "arp_synth": (98, "Crystal"),
         "bass": (34, "Finger Bass"),
         "pad": (89, "Pad Warm"),
-        "chord_stab": (62, "Synth Brass"),
+        "chord_stab": (62, "Synth Brass 1"),
+        "perc_aux": (116, "Synth Drum"),
+        "fx_riser": (119, "Reverse Cymbal"),
+    },
+    "compact_action": {
+        "melody": (27, "Clean Electric Guitar"),
+        "countermelody": (40, "Violin"),
+        "echo_synth": (102, "FX Echoes"),
+        "arp_synth": (98, "Crystal"),
+        "bass": (34, "Pick Bass"),
+        "pad": (50, "Synth Strings 1"),
+        "chord_stab": (56, "Trumpet"),
         "perc_aux": (116, "Synth Drum"),
         "fx_riser": (119, "Reverse Cymbal"),
     },
     "dubstep_bass": {
         "melody": (87, "Lead 5th"),
         "countermelody": (38, "Synth Bass 1"),
-        "echo_synth": (81, "Lead Saw"),
+        "echo_synth": (103, "FX Sci-Fi"),
         "arp_synth": (38, "Synth Bass 1"),
         "bass": (39, "Synth Bass 2"),
         "pad": (95, "Pad Sweep"),
-        "chord_stab": (62, "Synth Brass"),
+        "chord_stab": (62, "Synth Brass 1"),
         "perc_aux": (116, "Synth Drum"),
         "fx_riser": (119, "Reverse Cymbal"),
     },
 }
+
+
+def palette_echo_differs_from_melody(palette: dict[str, tuple[int, str]]) -> bool:
+    """True si echo_synth no comparte gm_program con melody en una paleta ancla."""
+    mel = palette.get("melody")
+    echo = palette.get("echo_synth")
+    if not mel or not echo:
+        return True
+    return mel[0] != echo[0]
 
 # Programas vistos en MIDIs de referencia — deben estar en el catálogo final
 MIDI_REFERENCE_PROGRAMS: dict[str, set[int]] = {
@@ -337,6 +415,142 @@ def extended_timbres_flat() -> dict[str, list[tuple[int, str]]]:
     for iid, entries in EXTENDED_TIMBRES.items():
         out[iid] = [(p, gm_name(p)) for p, _n, _tags in entries]
     return out
+
+
+# GM programs excluidos por contexto (coherencia de estilo)
+_MELODY_EXCLUDE_GUITAR = frozenset(range(24, 31))  # 24–30; 31 harmonics permitido en ambient
+_MELODY_EXCLUDE_PIANO = frozenset({0, 1, 2, 3})  # piano acústico fuera de chiptune puro
+_MELODY_EXCLUDE_SYNTH_LEAD = frozenset({80, 81, 82, 83, 84, 87})  # fuera de orquesta/cutscene
+
+
+def _context_tokens(
+    genre_tags: list[str] | None,
+    mood: str,
+    use_case: str,
+    composition_archetype: str | None,
+) -> set[str]:
+    tokens: set[str] = set()
+    for t in genre_tags or []:
+        for part in t.lower().replace(",", " ").split():
+            if part:
+                tokens.add(part)
+    for part in (mood or "").lower().split():
+        if part:
+            tokens.add(part)
+    tokens.add((use_case or "game").lower())
+    if composition_archetype:
+        tokens.add(composition_archetype.lower())
+        if composition_archetype == "ambient_loop":
+            tokens.update(("ambient", "loop", "ethereal"))
+        elif composition_archetype == "cinematic_cutscene":
+            tokens.update(("cinematic", "cutscene"))
+        elif composition_archetype == "chiptune_dance":
+            tokens.update(("chiptune", "dance", "synth"))
+        elif composition_archetype == "orchestral_boss":
+            tokens.update(("orchestral", "boss"))
+    return tokens
+
+
+def melody_timbre_allowed(
+    program: int,
+    style_tags: str,
+    context_tokens: set[str],
+) -> bool:
+    """True si el timbre encaja con el contexto (tags del catálogo ∩ contexto)."""
+    tag_set = {t.strip().lower() for t in style_tags.split(",") if t.strip()}
+    if tag_set and not (tag_set & context_tokens):
+        return False
+
+    ethereal = context_tokens & {"ambient", "loop", "ethereal", "drone", "soundscape"}
+    if program in _MELODY_EXCLUDE_GUITAR and ethereal:
+        return program == 31  # harmonics sí en ambient
+
+    if program in _MELODY_EXCLUDE_PIANO and context_tokens & {
+        "chiptune", "eurobeat", "arcade", "8-bit", "8bit",
+    }:
+        return False
+
+    orchestralish = context_tokens & {"orchestral", "boss", "cinematic", "cutscene"}
+    if program in _MELODY_EXCLUDE_SYNTH_LEAD and orchestralish:
+        if not (context_tokens & {"chiptune", "techno", "dubstep", "synth", "dance"}):
+            return False
+
+    return True
+
+
+def bass_timbre_allowed(
+    program: int,
+    style_tags: str,
+    context_tokens: set[str],
+) -> bool:
+    """True si el bajo encaja con el contexto (tags del catálogo ∩ contexto)."""
+    tag_set = {t.strip().lower() for t in style_tags.split(",") if t.strip()}
+    if tag_set and not (tag_set & context_tokens):
+        return False
+
+    orchestralish = context_tokens & {"orchestral", "boss", "cinematic", "cutscene", "epic"}
+    synth_bass = program in (38, 39)
+    if synth_bass and orchestralish:
+        if not (context_tokens & {"chiptune", "techno", "dubstep", "dance", "synth", "eurobeat"}):
+            return False
+
+    slap = program in (36, 37)
+    if slap and context_tokens & {"ambient", "loop", "ethereal", "drone"}:
+        return False
+
+    return True
+
+
+def filter_bass_timbres(
+    timbres: list[tuple[int, str]],
+    *,
+    genre_tags: list[str] | None = None,
+    mood: str = "",
+    use_case: str = "game",
+    composition_archetype: str | None = None,
+) -> list[tuple[int, str]]:
+    """Filtra timbres de bass por estilo; mantiene al menos 3 opciones."""
+    entries = EXTENDED_TIMBRES.get("bass", [])
+    prog_tags = {p: tags for p, _n, tags in entries}
+    ctx = _context_tokens(genre_tags, mood, use_case, composition_archetype)
+
+    filtered = [
+        (p, n) for p, n in timbres
+        if bass_timbre_allowed(p, prog_tags.get(p, ""), ctx)
+    ]
+    if len(filtered) >= 3:
+        return filtered
+    return timbres
+
+
+def filter_melody_timbres(
+    timbres: list[tuple[int, str]],
+    *,
+    genre_tags: list[str] | None = None,
+    mood: str = "",
+    use_case: str = "game",
+    composition_archetype: str | None = None,
+) -> list[tuple[int, str]]:
+    """Filtra timbres de melody por estilo; mantiene al menos 4 opciones."""
+    entries = EXTENDED_TIMBRES.get("melody", [])
+    prog_tags = {p: tags for p, _n, tags in entries}
+    ctx = _context_tokens(genre_tags, mood, use_case, composition_archetype)
+
+    filtered = [
+        (p, n) for p, n in timbres
+        if melody_timbre_allowed(p, prog_tags.get(p, ""), ctx)
+    ]
+    if len(filtered) >= 4:
+        return filtered
+    return timbres
+
+
+def melody_catalog_has_piano_and_guitar() -> bool:
+    """True si el catálogo fusionado incluye piano y guitarra como lead."""
+    programs = {p for p, _ in extended_timbres_flat().get("melody", [])}
+    has_piano = bool(programs & {0, 1, 2, 3, 4, 5})
+    has_guitar = bool(programs & set(range(24, 31)))
+    return has_piano and has_guitar
 
 
 def style_anchor_timbres_flat() -> dict[str, list[tuple[int, str]]]:

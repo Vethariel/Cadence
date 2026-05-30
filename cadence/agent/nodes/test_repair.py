@@ -79,6 +79,21 @@ def test_timing_drums_routes_to_rhythm():
     print("✓ timing_order (drums) → rhythm layers")
 
 
+def test_orchestral_boss_instrumental_injects_mandatory_layers():
+    state = _state_with_errors([
+        "[orchestral_layers] Boss orquestal: máx 3 capas simultáneas (mín 5)",
+    ])
+    state["composition_archetype"] = "orchestral_boss"
+    plan = determine_repair_plan(state)
+    assert plan["repair_target"] == "arrangement_planner"
+    assert "restore_optional_layers" in plan["repair_actions"]
+    layers = set(plan["repair_layers"] or [])
+    assert "pad" in layers and "arp_synth" in layers
+    assert "drums" in layers
+    assert layers != {"melody"}
+    print("✓ orchestral_boss instrumental → mandatory layers + arrangement")
+
+
 def test_instrumental_richness_routes_to_arrangement():
     state = _state_with_errors([
         "[instrumental_richness] Riqueza instrumental baja: capas activas μ=2.0",
@@ -133,6 +148,7 @@ if __name__ == "__main__":
     test_drums_present_routes_to_rhythm()
     test_pitch_range_routes_to_melody()
     test_timing_drums_routes_to_rhythm()
+    test_orchestral_boss_instrumental_injects_mandatory_layers()
     test_instrumental_richness_routes_to_arrangement()
     test_dynamic_range_routes_to_post_process()
     test_intensity_arc_routes_to_post_process()

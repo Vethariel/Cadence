@@ -24,7 +24,7 @@ def test_all_extended_timbres_in_gm_range():
 def test_merged_catalog_has_more_timbres_than_palettes_only():
     # melody: 5 from palettes alone, should be >= 15 merged
     melody = get_timbres("melody")
-    assert len(melody) >= 15, f"melody solo {len(melody)} timbres"
+    assert len(melody) >= 22, f"melody solo {len(melody)} timbres (incl. piano/guitar)"
     bass = get_timbres("bass")
     assert len(bass) >= 8
     arp = get_timbres("arp_synth")

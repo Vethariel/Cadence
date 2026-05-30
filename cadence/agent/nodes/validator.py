@@ -14,8 +14,13 @@ from cadence.music.narrative_validation import (
 from cadence.music.track_metrics import (
     layers_active_stats,
     melody_leap_ratio,
+    melody_notes_per_bar_mean,
     notes_per_bar_stdev,
     optional_layer_coverage,
+)
+from cadence.music.melody_density_policy import (
+    melody_max_long_gap_ratio,
+    melody_min_notes_per_bar_validator,
 )
 
 
@@ -258,6 +263,22 @@ def _check_instrumental_richness(
             )
         return True, ""
 
+    if arch == "orchestral_boss" and energy_level >= 4:
+        density_stdev = notes_per_bar_stdev(tracks, bpm)
+        min_mean = 3.6 if energy_level == 4 else 4.2
+        min_stdev = 9.0 if energy_level == 4 else 11.0
+        min_max = 4 if energy_level == 4 else 5
+        issues = []
+        if layers_mean < min_mean:
+            issues.append(f"capas activas μ={layers_mean:.1f} (mín {min_mean})")
+        if layers_max < min_max:
+            issues.append(f"capas activas máx={layers_max} (mín {min_max})")
+        if density_stdev < min_stdev:
+            issues.append(f"variación densidad σ={density_stdev:.1f} (mín {min_stdev})")
+        if issues:
+            return False, "Riqueza instrumental baja (boss orquestal): " + "; ".join(issues)
+        return True, ""
+
     if not _is_high_energy_game(energy_level, use_case):
         return True, ""
     density_stdev = notes_per_bar_stdev(tracks, bpm)
@@ -305,9 +326,18 @@ def _check_melody_rest_density(
     tracks: list[Track],
     bpm: int,
     composition_archetype: str | None = None,
+    energy_level: int = 3,
+    melody_texture: str = "balanced",
+    use_case: str = "game",
 ) -> tuple[bool, str]:
-    """Chiptune/dance: penaliza melodías con demasiados silencios entre notas."""
-    if composition_archetype != "chiptune_dance":
+    """Penaliza silencios largos cuando el arquetipo exige melodía densa."""
+    max_ratio = melody_max_long_gap_ratio(
+        composition_archetype,
+        energy_level,
+        melody_texture=melody_texture,
+        use_case=use_case,
+    )
+    if max_ratio is None:
         return True, ""
 
     melody = next((t for t in tracks if t.id == "melody"), None)
@@ -325,9 +355,39 @@ def _check_melody_rest_density(
     bar_ms = (60000 / max(bpm, 1)) * 4
     long_gaps = sum(1 for g in gaps if g >= bar_ms * 0.12)
     rest_ratio = long_gaps / len(gaps)
-    if rest_ratio > 0.35:
+    if rest_ratio > max_ratio:
+        arch = composition_archetype or "dense"
         return False, (
-            f"Melodía chiptune con demasiados silencios ({rest_ratio:.0%} huecos largos; máx 35%)."
+            f"Melodía {arch} con demasiados silencios ({rest_ratio:.0%} huecos largos; "
+            f"máx {max_ratio:.0%})."
+        )
+    return True, ""
+
+
+def _check_melody_notes_per_bar(
+    tracks: list[Track],
+    bpm: int,
+    composition_archetype: str | None = None,
+    energy_level: int = 3,
+    melody_texture: str = "balanced",
+    use_case: str = "game",
+) -> tuple[bool, str]:
+    """Umbral mínimo de notas/compás para arquetipos dance/chiptune."""
+    min_mean = melody_min_notes_per_bar_validator(
+        composition_archetype,
+        energy_level,
+        melody_texture=melody_texture,
+        use_case=use_case,
+    )
+    if min_mean is None:
+        return True, ""
+
+    mean_notes = melody_notes_per_bar_mean(tracks, bpm)
+    if mean_notes < min_mean:
+        arch = composition_archetype or "dense"
+        return False, (
+            f"Melodía {arch} poco densa: {mean_notes:.1f} notas/compás "
+            f"(mín {min_mean:.1f})."
         )
     return True, ""
 
@@ -337,15 +397,34 @@ def _check_orchestral_simultaneity(
     bpm: int,
     energy_level: int,
     composition_archetype: str | None = None,
+    arrangement: ArrangementPlan | None = None,
+    duration_ms: int = 0,
 ) -> tuple[bool, str]:
-    if composition_archetype != "orchestral_boss" or energy_level < 5:
+    if composition_archetype != "orchestral_boss" or energy_level < 4:
         return True, ""
 
-    _, layers_max = layers_active_stats(tracks, bpm)
-    if layers_max < 5:
-        return False, (
-            f"Boss orquestal: pocas capas simultáneas (máx {layers_max}; se espera ≥5)."
-        )
+    layers_mean, layers_max = layers_active_stats(tracks, bpm)
+    min_max = 4 if energy_level == 4 else 5
+    min_mean = 3.4 if energy_level == 4 else 3.8
+    issues = []
+    if layers_max < min_max:
+        issues.append(f"máx {layers_max} capas simultáneas (mín {min_max})")
+    if layers_mean < min_mean:
+        issues.append(f"μ={layers_mean:.1f} capas/compás (mín {min_mean})")
+
+    if arrangement and duration_ms > 0:
+        thin_mandatory = []
+        for iid in ("pad", "chord_stab", "countermelody", "arp_synth"):
+            if not any(l.instrument_id == iid for l in arrangement.layers):
+                continue
+            cov = optional_layer_coverage(tracks, iid, duration_ms)
+            if cov < 0.12:
+                thin_mandatory.append(f"{iid} ({cov:.0%})")
+        if thin_mandatory:
+            issues.append(f"cobertura baja: {', '.join(thin_mandatory)}")
+
+    if issues:
+        return False, "Boss orquestal: " + "; ".join(issues)
     return True, ""
 
 
@@ -415,6 +494,33 @@ def _check_narrative_motif_continuity(
     )
 
 
+TECHNICAL_CHECK_NAMES = frozenset({
+    "tracks_present",
+    "pitch_range",
+    "velocity_range",
+    "timing_order",
+    "drums_present",
+})
+
+PERCEPTUAL_CHECK_NAMES = frozenset({
+    "melody_coverage",
+    "melody_variety",
+    "melody_loop",
+    "dynamic_range",
+    "intensity_arc",
+    "instrumental_richness",
+    "melody_leaps",
+    "planned_layers",
+    "melody_rest_density",
+    "melody_notes_per_bar",
+    "orchestral_layers",
+    "narrative_key_coverage",
+    "narrative_intensity",
+    "narrative_motif",
+})
+
+PASS_SCORE_THRESHOLD = 0.8
+
 # Checks con su peso en el score final
 CHECKS = [
     (_check_all_tracks_present,  0.20, "tracks_present"),
@@ -431,6 +537,7 @@ CHECKS = [
     (_check_melody_leaps,        0.03, "melody_leaps"),
     (_check_planned_optional_layers, 0.03, "planned_layers"),
     (_check_melody_rest_density, 0.03, "melody_rest_density"),
+    (_check_melody_notes_per_bar, 0.03, "melody_notes_per_bar"),
     (_check_orchestral_simultaneity, 0.03, "orchestral_layers"),
     (_check_narrative_key_coverage, 0.03, "narrative_key_coverage"),
     (_check_narrative_intensity_direction, 0.03, "narrative_intensity"),
@@ -461,6 +568,10 @@ def validator_node(state: SongState) -> dict:
         narrative, contract, context="validator", state=state,
     )
     archetype = get_composition_archetype(state)
+    melody_texture = "balanced"
+    plan = state.get("orchestration_plan")
+    if plan is not None:
+        melody_texture = getattr(plan, "melody_texture", melody_texture) or melody_texture
     key = proposal.key if proposal else "C"
     mode = proposal.mode if proposal else "minor"
     canonical = canonical_section_ids(state)
@@ -496,9 +607,22 @@ def validator_node(state: SongState) -> dict:
         elif check_fn == _check_melody_leaps:
             passed, msg = check_fn(tracks, energy, use_case, archetype)
         elif check_fn == _check_melody_rest_density:
-            passed, msg = check_fn(tracks, bpm, archetype)
+            passed, msg = check_fn(
+                tracks, bpm, archetype, energy, melody_texture, use_case,
+            )
+        elif check_fn == _check_melody_notes_per_bar:
+            passed, msg = check_fn(
+                tracks, bpm, archetype, energy, melody_texture, use_case,
+            )
         elif check_fn == _check_orchestral_simultaneity:
-            passed, msg = check_fn(tracks, bpm, energy, archetype)
+            passed, msg = check_fn(
+                tracks,
+                bpm,
+                energy,
+                archetype,
+                arrangement,
+                structure.estimated_duration_ms,
+            )
         elif check_fn == _check_planned_optional_layers:
             passed, msg = check_fn(
                 tracks, arrangement, structure.estimated_duration_ms,
@@ -521,13 +645,18 @@ def validator_node(state: SongState) -> dict:
             errors.append(f"[{name}] {msg}")
 
     score = max(0.0, round(score, 3))
-    passed = score >= 0.8
+    failed_names = {e[1 : e.index("]")] for e in errors if e.startswith("[") and "]" in e}
+    passed_technical = not (failed_names & TECHNICAL_CHECK_NAMES)
+    passed_perceptual = not (failed_names & PERCEPTUAL_CHECK_NAMES)
+    passed = score >= PASS_SCORE_THRESHOLD
 
     validation = ValidationResult(
         score=score,
         errors=errors,
         warnings=warnings,
         passed=passed,
+        passed_technical=passed_technical,
+        passed_perceptual=passed_perceptual,
     )
 
     return {"validation_result": validation}

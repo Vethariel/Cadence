@@ -53,6 +53,21 @@ def notes_per_bar_stdev(tracks: list[Track], bpm: int) -> float:
     return statistics.stdev(bar_notes.values())
 
 
+def melody_notes_per_bar_mean(tracks: list[Track], bpm: int) -> float:
+    """Media de notas melódicas por compás con eventos."""
+    melody = next((t for t in tracks if t.id == "melody"), None)
+    if not melody or not melody.events:
+        return 0.0
+    bar_ms = ms_per_bar(bpm)
+    bar_notes: dict[int, int] = defaultdict(int)
+    for e in melody.events:
+        if e.type == "note":
+            bar_notes[int(e.t // bar_ms)] += 1
+    if not bar_notes:
+        return 0.0
+    return statistics.mean(bar_notes.values())
+
+
 def melody_leap_ratio(tracks: list[Track]) -> float:
     """Fracción de intervalos melódicos mayores a 4 semitonos."""
     melody = next((t for t in tracks if t.id == "melody"), None)

@@ -1,11 +1,12 @@
 """Nodo determinista: selección de estrategias desde generation_seed."""
 
-from cadence.schemas.song_state import SongState
+from cadence.schemas.song_state import PatternSelectionAudit, SongState
 from cadence.music.seed_policy import derive_node_seed
 from cadence.music.strategy_pools import compute_generation_seed, select_strategies
 from cadence.music.creative_variation import build_creative_variation_bounds
-from cadence.music.style_archetype import infer_composition_archetype
-from cadence.music.style_profile import effective_genre_tags
+from cadence.music.pattern_intent import derive_pattern_intent
+from cadence.music.style_archetype import infer_composition_archetype_with_reason
+from cadence.music.style_profile import build_genre_mix_from_state, effective_genre_tags
 
 
 def strategy_planner_node(state: SongState) -> dict:
@@ -26,21 +27,44 @@ def strategy_planner_node(state: SongState) -> dict:
     genre_tags = effective_genre_tags(state)
     energy = proposal.energy_level if proposal else 3
 
-    archetype = infer_composition_archetype(
+    decision = infer_composition_archetype_with_reason(
         style_profile=state.get("style_profile"),
         raw_prompt=intent.raw_prompt,
         use_case=intent.use_case,
         energy_level=energy,
     )
-    strategies = select_strategies(
-        pool_seed or root_seed, genre_tags, mode, intent.use_case, energy,
+    archetype = decision.archetype
+    genre_mix = build_genre_mix_from_state(state)
+    pattern_intent = derive_pattern_intent(
+        genre_mix=genre_mix,
+        use_case=intent.use_case,
+        mood=intent.mood,
+        energy_level=energy,
         composition_archetype=archetype,
+        generation_seed=pool_seed or root_seed,
+    )
+    pattern_selection_audit = PatternSelectionAudit(
+        generation_seed=pool_seed or root_seed,
+    )
+    strategies = select_strategies(
+        pool_seed or root_seed,
+        genre_tags,
+        mode,
+        intent.use_case,
+        energy,
+        composition_archetype=archetype,
+        pattern_intent=pattern_intent,
+        pattern_selection_audit=pattern_selection_audit,
     )
 
     out: dict = {
         "generation_seed": root_seed,
         "strategies": strategies,
+        "genre_mix": genre_mix,
+        "pattern_intent": pattern_intent,
+        "pattern_selection_audit": pattern_selection_audit,
         "composition_archetype": archetype,
+        "archetype_reason": decision.reason,
     }
     anchors = state.get("narrative_anchors")
     if anchors:

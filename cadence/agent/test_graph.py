@@ -52,6 +52,7 @@ def _graph_initial_state(prompt: str) -> dict:
         "creative_variation": None,
         "node_seeds": None,
         "composition_archetype": None,
+        "archetype_reason": None,
         "harmony": None,
         "development": None,
         "strategies": None,

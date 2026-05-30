@@ -6,6 +6,11 @@ from collections import defaultdict
 
 from cadence.agent.nodes.melody import _get_scale_pitches
 from cadence.agent.nodes.narrative_apply import melody_rest_ratio, section_intent_map
+from cadence.music.melody_density_policy import (
+    is_dense_melody_target,
+    melody_notes_per_bar_target,
+    melody_rest_ratio_for_intent,
+)
 from cadence.schemas.song_state import RhythmEvent, SongState, Track
 
 MELODY_PITCH_MIN = 60   # C4
@@ -259,6 +264,18 @@ def _min_notes_per_bar(
     composition_archetype: str | None = None,
     micro_phrase_variance: float = 0.5,
 ) -> int:
+    if is_dense_melody_target(
+        composition_archetype,
+        energy_level=energy,
+        melody_texture=melody_texture,
+        use_case=use_case,
+    ):
+        base = melody_notes_per_bar_target(
+            composition_archetype, energy,
+            melody_texture=melody_texture, use_case=use_case,
+        )
+        boost = int(round(micro_phrase_variance * 2))
+        return min(11, base + boost)
     uc = (use_case or "game").lower()
     if composition_archetype == "chiptune_dance":
         base = 9 if energy >= 5 else 8
