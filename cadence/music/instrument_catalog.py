@@ -460,6 +460,56 @@ def proposal_instruments_to_assignments(
     return out
 
 
+def ensure_core_assignments(
+    by_id: dict[str, InstrumentAssignment],
+    *,
+    generation_seed: int,
+    timbre_context: dict,
+) -> None:
+    """Garantiza drums/bass/melody con timbres de paleta por arquetipo."""
+    from cadence.music.instrument_roles import default_role_for_instrument
+    from cadence.music.timbre_library import palette_for_archetype
+
+    palette = palette_for_archetype(timbre_context.get("composition_archetype"))
+    for iid in CORE_INSTRUMENTS:
+        existing = by_id.get(iid)
+        if not existing or not existing.active:
+            continue
+
+        if iid == "drums":
+            defn = get_instrument(iid)
+            if not existing.display_name or existing.display_name == "Drum Kit":
+                by_id[iid] = existing.model_copy(update={"display_name": defn.display_name})
+            continue
+
+        seed_offset = generation_seed + hash(iid) % 997
+        anchor = palette.get(iid)
+        anchor_prog = anchor[0] if anchor else 0
+        defn = get_instrument(iid)
+        generic_name = defn.display_name
+        needs_timbre = (
+            existing.gm_program == 0
+            or existing.display_name == generic_name
+        )
+        if not needs_timbre:
+            continue
+
+        prog, name = resolve_timbre(
+            iid,
+            anchor_prog,
+            generation_seed=seed_offset,
+            **timbre_context,
+        )
+        from cadence.music.instrument_roles import default_role_for_instrument
+
+        role = default_role_for_instrument(iid)
+        by_id[iid] = existing.model_copy(update={
+            "gm_program": prog,
+            "display_name": name,
+            "role": role,
+        })
+
+
 def _assignment_from_timbre(
     item: InstrumentAssignment,
     *,
@@ -845,6 +895,12 @@ def validate_orchestration(
         timbre_context=timbre_context,
     )
 
+    ensure_core_assignments(
+        by_id,
+        generation_seed=generation_seed,
+        timbre_context=timbre_context,
+    )
+
     ordered = [
         by_id[iid]
         for iid in sorted(by_id.keys(), key=lambda x: (x not in CORE_INSTRUMENTS, x))
@@ -869,9 +925,16 @@ def active_instrument_ids(plan: OrchestrationPlan) -> set[str]:
     return {a.instrument_id for a in plan.instruments if a.active}
 
 
-def apply_orchestration_gm(tracks: list[Track], plan: OrchestrationPlan) -> list[Track]:
+def apply_orchestration_gm(
+    tracks: list[Track],
+    plan: OrchestrationPlan,
+    *,
+    state: dict | None = None,
+) -> list[Track]:
     """Asigna gm_program e instrument display desde timbres elegidos por el agente."""
     assign = {a.instrument_id: a for a in plan.instruments if a.active}
+    if state is not None:
+        assign = _merge_core_track_timbres(assign, state)
     result = []
     for track in tracks:
         iid = track.instrument_id or track.id
@@ -885,6 +948,59 @@ def apply_orchestration_gm(tracks: list[Track], plan: OrchestrationPlan) -> list
             updates["gm_program"] = entry.gm_program
         result.append(track.model_copy(update=updates))
     return result
+
+
+def _merge_core_track_timbres(
+    assign: dict[str, InstrumentAssignment],
+    state: dict,
+) -> dict[str, InstrumentAssignment]:
+    """Aplica paleta ancla a melody/bass en tracks aunque falten en el plan LLM."""
+    from cadence.music.instrument_roles import default_role_for_instrument
+    from cadence.music.style_archetype import get_composition_archetype
+    from cadence.music.timbre_library import palette_for_archetype
+
+    proposal = state.get("technical_proposal")
+    intent = state.get("intent")
+    archetype = get_composition_archetype(state)
+    ctx = {
+        "genre_tags": list(proposal.genre_tags) if proposal else [],
+        "mood": intent.mood if intent else "",
+        "use_case": intent.use_case if intent else "game",
+        "composition_archetype": archetype,
+    }
+    seed = state.get("generation_seed", 0)
+    palette = palette_for_archetype(archetype)
+    merged = dict(assign)
+
+    for iid in ("melody", "bass"):
+        existing = merged.get(iid)
+        defn = get_instrument(iid)
+        generic = defn.display_name
+        needs = (
+            existing is None
+            or existing.gm_program == 0
+            or existing.display_name == generic
+        )
+        if not needs:
+            continue
+        anchor = palette.get(iid)
+        prog, name = resolve_timbre(
+            iid,
+            anchor[0] if anchor else 0,
+            generation_seed=seed + hash(iid) % 997,
+            **ctx,
+        )
+        role = default_role_for_instrument(iid)
+        mix = existing.mix_level if existing else _DEFAULT_MIX.get(iid, -8.0)
+        merged[iid] = InstrumentAssignment(
+            instrument_id=iid,
+            role=role,
+            gm_program=prog,
+            display_name=name,
+            mix_level=mix,
+            active=True,
+        )
+    return merged
 
 
 def build_fallback_orchestration(

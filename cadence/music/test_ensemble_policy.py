@@ -76,6 +76,20 @@ def test_folk_gets_guitars_or_keys():
     print("✓ test_folk_gets_guitars_or_keys OK")
 
 
+def test_compact_caps_ensemble_families():
+    fam = select_ensemble_families(
+        genre_tags=["orchestral", "boss fight", "cinematic"],
+        composition_archetype="compact_action",
+        use_case="game",
+        energy_level=5,
+        generation_seed=42,
+    )
+    assert len(fam) <= 2
+    assert "strings_ensemble" not in fam or len(fam) <= 2
+    print(f"  compact families: {sorted(fam)}")
+    print("✓ test_compact_caps_ensemble_families OK")
+
+
 if __name__ == "__main__":
     test_ensemble_registered()
     test_orchestral_gets_multiple_families()
@@ -83,4 +97,5 @@ if __name__ == "__main__":
     test_hybrid_chiptune_orchestral()
     test_guitar_replaces_pluck()
     test_folk_gets_guitars_or_keys()
+    test_compact_caps_ensemble_families()
     print("\n✓ All ensemble_policy tests passed")

@@ -57,6 +57,23 @@ def test_precedence_compact_platform_over_orchestral_tags():
     assert "precedence_matrix" in decision.reason or "compact" in decision.reason
 
 
+def test_reconcile_llm_orchestral_overridden_by_compact_prompt():
+    from cadence.music.style_archetype import reconcile_llm_archetype
+
+    bp = next(p for p in load_benchmark_prompts() if p.id == "energetic_game")
+    decision = reconcile_llm_archetype(
+        "orchestral_boss",
+        style_profile=MusicalStyleProfile(
+            genres=["orchestral", "boss fight", "eurobeat"],
+        ),
+        raw_prompt=bp.prompt,
+        use_case="game",
+        energy_level=4,
+    )
+    assert decision.archetype == "compact_action"
+    assert "guardrail" in decision.reason or "precedence" in decision.reason
+
+
 def test_archetype_reason_exported():
     decision = infer_composition_archetype_with_reason(
         raw_prompt="loop ambiente",
@@ -93,6 +110,7 @@ if __name__ == "__main__":
     test_chiptune_from_genres()
     test_orchestral_boss()
     test_precedence_compact_platform_over_orchestral_tags()
+    test_reconcile_llm_orchestral_overridden_by_compact_prompt()
     test_archetype_reason_exported()
     test_drum_machines_avoid_does_not_suppress_drums()
     test_explicit_no_drums_suppresses()

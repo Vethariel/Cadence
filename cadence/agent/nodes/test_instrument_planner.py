@@ -342,6 +342,33 @@ def test_style_profile_no_avoid_keeps_programs():
     print("✓ test_style_profile_no_avoid_keeps_programs OK")
 
 
+def test_ensure_core_assignments_applies_archetype_palette():
+    from cadence.music.instrument_catalog import ensure_core_assignments
+    from cadence.schemas.song_state import InstrumentAssignment
+
+    by_id: dict[str, InstrumentAssignment] = {
+        "melody": InstrumentAssignment(
+            instrument_id="melody", role="lead", gm_program=0,
+            display_name="Melody", mix_level=-8.0, active=True,
+        ),
+        "bass": InstrumentAssignment(
+            instrument_id="bass", role="bass", gm_program=0,
+            display_name="Bass Synth", mix_level=-6.0, active=True,
+        ),
+    }
+    ctx = {
+        "genre_tags": ["boss fight"],
+        "mood": "",
+        "use_case": "game",
+        "composition_archetype": "orchestral_boss",
+    }
+    ensure_core_assignments(by_id, generation_seed=42, timbre_context=ctx)
+    assert by_id["melody"].gm_program != 0
+    assert by_id["melody"].display_name != "Melody"
+    assert by_id["bass"].display_name != "Bass Synth"
+    print("✓ test_ensure_core_assignments_applies_archetype_palette OK")
+
+
 if __name__ == "__main__":
     test_validate_orchestration_no_mandatory_core()
     test_validate_trims_excess_optionals_for_loop()
@@ -359,4 +386,5 @@ if __name__ == "__main__":
     test_melody_countermelody_cannot_share_gm_program()
     test_style_profile_avoids_incoherent_timbres()
     test_style_profile_no_avoid_keeps_programs()
+    test_ensure_core_assignments_applies_archetype_palette()
     print("\nAll instrument planner tests passed.")

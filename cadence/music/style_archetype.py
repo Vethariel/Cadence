@@ -337,6 +337,64 @@ def infer_composition_archetype(
     ).archetype
 
 
+_ARCHETYPE_VALUES = frozenset({
+    "ambient_loop", "cinematic_cutscene", "chiptune_dance",
+    "compact_action", "orchestral_boss", "default_game",
+})
+
+# LLM dice X pero el prompt pide Y — prioridad al guardrail determinista.
+_LLM_OVERRIDE_CONFLICTS: dict[str, frozenset[str]] = {
+    "orchestral_boss": frozenset({"compact_action", "chiptune_dance", "ambient_loop"}),
+    "cinematic_cutscene": frozenset({"chiptune_dance", "ambient_loop"}),
+    "chiptune_dance": frozenset({"orchestral_boss", "cinematic_cutscene"}),
+}
+
+
+def reconcile_llm_archetype(
+    llm_archetype: str | None,
+    *,
+    style_profile: MusicalStyleProfile | None = None,
+    raw_prompt: str = "",
+    use_case: str = "game",
+    energy_level: int = 3,
+) -> ArchetypeDecision:
+    """
+    Combina composition_archetype del LLM con inferencia del prompt.
+    El LLM gana solo si no contradice guardrails explícitos del brief.
+    """
+    decision = infer_composition_archetype_with_reason(
+        style_profile=style_profile,
+        raw_prompt=raw_prompt,
+        use_case=use_case,
+        energy_level=energy_level,
+    )
+    llm = (llm_archetype or "").strip().lower()
+    if llm not in _ARCHETYPE_VALUES:
+        return decision
+
+    if llm == decision.archetype:
+        return ArchetypeDecision(decision.archetype, "technical_spec.composition_archetype")
+
+    if decision.reason.startswith("precedence_matrix:"):
+        return decision
+
+    prompt = _prompt_lower(raw_prompt)
+    if llm == "orchestral_boss" and _prompt_has(prompt, _ANTI_ORCHESTRA_PROMPT):
+        return ArchetypeDecision(
+            decision.archetype,
+            f"prompt_guardrail:anti_orchestra_overrides_llm_{llm}",
+        )
+
+    conflicts = _LLM_OVERRIDE_CONFLICTS.get(llm, frozenset())
+    if decision.archetype in conflicts:
+        return ArchetypeDecision(
+            decision.archetype,
+            f"prompt_guardrail:{decision.reason}",
+        )
+
+    return ArchetypeDecision(llm, "technical_spec.composition_archetype")  # type: ignore[arg-type]
+
+
 def get_composition_archetype(
     state: dict,
     *,

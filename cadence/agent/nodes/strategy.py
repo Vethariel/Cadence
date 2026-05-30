@@ -5,7 +5,7 @@ from cadence.music.seed_policy import derive_node_seed
 from cadence.music.strategy_pools import compute_generation_seed, select_strategies
 from cadence.music.creative_variation import build_creative_variation_bounds
 from cadence.music.pattern_intent import derive_pattern_intent
-from cadence.music.style_archetype import infer_composition_archetype_with_reason
+from cadence.music.style_archetype import reconcile_llm_archetype
 from cadence.music.style_profile import build_genre_mix_from_state, effective_genre_tags
 from cadence.music.technical_proposal_apply import (
     merge_strategies_from_proposal,
@@ -31,18 +31,15 @@ def strategy_planner_node(state: SongState) -> dict:
     energy = proposal.energy_level if proposal else 3
 
     llm_arch = snap_archetype(proposal.composition_archetype) if proposal else ""
-    if llm_arch:
-        archetype = llm_arch  # type: ignore[assignment]
-        arch_reason = "technical_spec.composition_archetype"
-    else:
-        decision = infer_composition_archetype_with_reason(
-            style_profile=state.get("style_profile"),
-            raw_prompt=intent.raw_prompt,
-            use_case=intent.use_case,
-            energy_level=energy,
-        )
-        archetype = decision.archetype
-        arch_reason = decision.reason
+    arch_decision = reconcile_llm_archetype(
+        llm_arch or None,
+        style_profile=state.get("style_profile"),
+        raw_prompt=intent.raw_prompt,
+        use_case=intent.use_case,
+        energy_level=energy,
+    )
+    archetype = arch_decision.archetype
+    arch_reason = arch_decision.reason
 
     genre_mix = build_genre_mix_from_state(state)
     pattern_intent = derive_pattern_intent(

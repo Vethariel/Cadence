@@ -105,6 +105,13 @@ def ensemble_score(
 
     if uc in ("game", "animation", "cutscene"):
         score += 0.1
+    if arch == "compact_action":
+        score *= 0.3
+    elif arch == "chiptune_dance" and orch < 0.2:
+        score *= 0.55
+    elif arch == "ambient_loop":
+        score *= 0.45
+
     if uc == "loop" and orch < 0.15:
         score *= 0.5
 
@@ -162,6 +169,7 @@ def select_ensemble_families(
 
     tags = _tags_lower(genre_tags)
     arch = (composition_archetype or "").lower()
+    orch = _tag_overlap(tags, ORCHESTRAL_TAG_TOKENS)
     score = ensemble_score(
         genre_tags=genre_tags,
         composition_archetype=composition_archetype,
@@ -170,13 +178,22 @@ def select_ensemble_families(
         genre_mix=genre_mix,
     )
     n = max_ensemble_slots(energy_level, use_case, score)
+    if arch == "compact_action":
+        n = min(n, 2)
+    elif arch == "ambient_loop":
+        n = min(n, 1)
+    elif arch == "chiptune_dance" and orch < 0.2:
+        n = min(n, 2)
+    elif arch == "cinematic_cutscene":
+        n = min(n, 3)
     seed = generation_seed % 9973
 
-    orch = _tag_overlap(tags, ORCHESTRAL_TAG_TOKENS)
     folk = _tag_overlap(tags, FOLK_JAZZ_TAG_TOKENS)
 
     priority: list[str] = []
-    if orch >= 0.15 or arch == "orchestral_boss":
+    if arch == "compact_action":
+        priority.extend(["keys_piano", "woodwind_a"])
+    elif orch >= 0.15 or arch == "orchestral_boss":
         priority.extend(["strings_ensemble", "woodwind_a", "keys_piano", "brass_a"])
     if folk >= 0.15 or arch == "cinematic_cutscene":
         priority.extend(["keys_piano", "guitar_acoustic", "woodwind_a"])

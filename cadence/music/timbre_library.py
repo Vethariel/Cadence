@@ -434,6 +434,22 @@ STYLE_PALETTES: dict[str, dict[str, tuple[int, str]]] = {
 }
 
 
+_ARCHETYPE_PALETTE_KEYS: dict[str, str] = {
+    "ambient_loop": "ambient_loop",
+    "cinematic_cutscene": "cinematic_cutscene",
+    "chiptune_dance": "chiptune",
+    "compact_action": "compact_action",
+    "orchestral_boss": "orchestral_boss",
+    "default_game": "dance_game",
+}
+
+
+def palette_for_archetype(composition_archetype: str | None) -> dict[str, tuple[int, str]]:
+    """Paleta ancla de timbres por arquetipo compositivo."""
+    key = _ARCHETYPE_PALETTE_KEYS.get(composition_archetype or "", "dance_game")
+    return STYLE_PALETTES.get(key, STYLE_PALETTES["dance_game"])
+
+
 def palette_echo_differs_from_melody(palette: dict[str, tuple[int, str]]) -> bool:
     """True si echo_synth no comparte gm_program con melody en una paleta ancla."""
     mel = palette.get("melody")

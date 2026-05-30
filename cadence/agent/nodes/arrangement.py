@@ -178,15 +178,19 @@ def _effective_instruments(state: SongState, plan: OrchestrationPlan) -> set[str
     )
     if archetype == "orchestral_boss":
         capped = apply_orchestral_boss_instruments(capped, energy)
+    elif archetype == "compact_action":
+        from cadence.music.orchestral_arrangement import ORCHESTRAL_BOSS_MANDATORY
+        capped -= ORCHESTRAL_BOSS_MANDATORY
     genre_tags = effective_genre_tags(state)
-    capped |= select_ensemble_families(
-        genre_tags=genre_tags,
-        composition_archetype=archetype,
-        use_case=intent.use_case,
-        energy_level=energy,
-        generation_seed=state.get("generation_seed", 0),
-        genre_mix=build_genre_mix(proposal_tags=genre_tags) if genre_tags else None,
-    )
+    if archetype not in ("compact_action", "ambient_loop"):
+        capped |= select_ensemble_families(
+            genre_tags=genre_tags,
+            composition_archetype=archetype,
+            use_case=intent.use_case,
+            energy_level=energy,
+            generation_seed=state.get("generation_seed", 0),
+            genre_mix=build_genre_mix(proposal_tags=genre_tags) if genre_tags else None,
+        )
     capped = resolve_ensemble_conflicts(capped)
     if "restore_optional_layers" in repair_actions:
         return capped
@@ -198,17 +202,41 @@ def _ensure_texture_bed_layers(
     layers: list[LayerSpec],
     structure,
     use_case: str,
+    *,
+    plan: OrchestrationPlan | None = None,
+    suppress_drums: bool = False,
 ) -> list[LayerSpec]:
-    """Loop/cutscene: pad en todas las secciones para cama continua."""
+    """Loop/cutscene: cama continua (pad, bass, melody) y core cuando aplique."""
     if (use_case or "game").lower() not in ("loop", "cutscene"):
-        return layers
+        return _ensure_core_layers(layers, plan, suppress_drums=suppress_drums)
+
     ids = {l.instrument_id for l in layers}
     all_sections = list(structure.sections)
     out = list(layers)
     if "pad" not in ids:
-        out.append(_layer_spec("pad", all_sections or ["*"], None))
+        out.append(_layer_spec("pad", all_sections or ["*"], plan))
     if "bass" not in ids:
-        out.append(_layer_spec("bass", ["*"], None))
+        out.append(_layer_spec("bass", ["*"], plan))
+    if "melody" not in ids:
+        out.append(_layer_spec("melody", ["*"], plan, min_density=0.2))
+    return _ensure_core_layers(out, plan, suppress_drums=suppress_drums)
+
+
+def _ensure_core_layers(
+    layers: list[LayerSpec],
+    plan: OrchestrationPlan | None,
+    *,
+    suppress_drums: bool = False,
+) -> list[LayerSpec]:
+    """Garantiza núcleo rítmico/melódico cuando el plan lo incluye o el use_case lo exige."""
+    ids = {l.instrument_id for l in layers}
+    out = list(layers)
+    if not suppress_drums and "drums" not in ids:
+        out.insert(0, _layer_spec("drums", ["*"], plan))
+    if "bass" not in ids:
+        out.append(_layer_spec("bass", ["*"], plan))
+    if "melody" not in ids:
+        out.append(_layer_spec("melody", ["*"], plan, min_density=0.2))
     return out
 
 
@@ -336,8 +364,19 @@ def _build_layers_from_orchestration(
                 min_density=floor,
             ))
 
+    intent = state["intent"]
+    profile = state.get("style_profile")
+    suppress_drums = percussion_suppressed(
+        use_case=intent.use_case,
+        energy_level=proposal.energy_level if proposal else 3,
+        style_profile=profile,
+    )
     return _ensure_texture_bed_layers(
-        layers, structure, state["intent"].use_case,
+        layers,
+        structure,
+        intent.use_case,
+        plan=plan,
+        suppress_drums=suppress_drums,
     )
 
 
@@ -467,7 +506,15 @@ def _build_layers_deterministic(state: SongState) -> list[LayerSpec]:
                 "synth_pluck", pluck_sections, plan, min_density=DENSITY_PLUCK,
             ))
 
-    return _ensure_texture_bed_layers(layers, structure, use_case)
+    profile = state.get("style_profile")
+    suppress_drums = percussion_suppressed(
+        use_case=use_case,
+        energy_level=energy,
+        style_profile=profile,
+    )
+    return _ensure_texture_bed_layers(
+        layers, structure, use_case, plan=plan, suppress_drums=suppress_drums,
+    )
 
 
 def arrangement_planner_node(state: SongState) -> dict:
@@ -497,7 +544,9 @@ def arrangement_planner_node(state: SongState) -> dict:
     else:
         layers = _build_layers_deterministic(state)
 
-    layers = _ensure_texture_bed_layers(layers, structure, use_case)
+    layers = _ensure_texture_bed_layers(
+        layers, structure, use_case, plan=orchestration, suppress_drums=suppress_drums,
+    )
 
     development = state.get("development")
     texture_mode = development.texture_mode if development else "staggered"

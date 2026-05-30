@@ -42,7 +42,7 @@ def post_process_node(state: SongState) -> dict:
 
     tracks = apply_melody_post(tracks, state)
     plan = orchestration_for_state(state, tracks)
-    tracks = apply_orchestration_gm(tracks, plan)
+    tracks = apply_orchestration_gm(tracks, plan, state=state)
     intent_map = contract_section_intent_map(
         narrative, state.get("narrative_contract"), context="post_process", state=state,
     )
