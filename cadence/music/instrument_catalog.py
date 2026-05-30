@@ -24,6 +24,13 @@ from cadence.schemas.song_state import (
     OrchestrationPlan,
     Track,
 )
+from cadence.music.ensemble_policy import (
+    ENSEMBLE_INSTRUMENT_IDS,
+    ENSEMBLE_REPLACES_OPTIONAL,
+    ensemble_optional_budget_bonus,
+    ensemble_score,
+    inject_ensemble_into_assignments,
+)
 from cadence.music.melody_identity import melody_instrument_from_state
 from cadence.music.style_profile import programs_matching_avoid
 
@@ -368,6 +375,47 @@ def _separate_melody_echo_synth_programs(
     )
 
 
+def _separate_ensemble_programs(
+    by_id: dict[str, InstrumentAssignment],
+    *,
+    generation_seed: int,
+    timbre_context: dict | None = None,
+) -> None:
+    """Melodía y cada familia ensemble usan gm_program distintos entre sí."""
+    ctx = timbre_context or {}
+    melody = by_id.get("melody")
+    if not melody or not melody.active:
+        return
+    used = {melody.gm_program}
+    for eid in sorted(ENSEMBLE_INSTRUMENT_IDS):
+        item = by_id.get(eid)
+        if not item or not item.active:
+            continue
+        if item.gm_program not in used:
+            used.add(item.gm_program)
+            continue
+        alt = _pick_alternate_program(
+            eid, used, generation_seed + hash(eid), timbre_context=ctx,
+        )
+        if alt is not None:
+            prog, name = resolve_timbre(eid, alt, generation_seed=generation_seed, **ctx)
+            by_id[eid] = item.model_copy(update={"gm_program": prog, "display_name": name})
+            used.add(prog)
+        for other in sorted(ENSEMBLE_INSTRUMENT_IDS):
+            if other == eid:
+                continue
+            o = by_id.get(other)
+            if not o or not o.active:
+                continue
+            if o.gm_program == by_id[eid].gm_program:
+                _separate_lead_programs(
+                    by_id, eid, other,
+                    generation_seed=generation_seed + hash((eid, other)),
+                    prefer_alt_on=other,
+                    timbre_context=ctx,
+                )
+
+
 def _apply_style_profile_avoids(
     by_id: dict[str, InstrumentAssignment],
     profile: MusicalStyleProfile | None,
@@ -448,6 +496,16 @@ def validate_orchestration(
         genre_tags=genre_tags,
         genre_mix=genre_mix,
     )
+    e_score = ensemble_score(
+        genre_tags=genre_tags,
+        composition_archetype=archetype,
+        use_case=use_case,
+        energy_level=energy_level,
+        genre_mix=genre_mix,
+    )
+    extra_opt, extra_lead = ensemble_optional_budget_bonus(e_score)
+    max_optional = min(8, max_optional + extra_opt)
+    max_lead = min(5, max_lead + extra_lead)
     allowed_pool: set[str] | None = None
     if isinstance(creative_variation, CreativeVariationBounds):
         max_optional = min(max_optional, creative_variation.max_optional_layers)
@@ -548,6 +606,20 @@ def validate_orchestration(
                 del by_id[iid]
                 lead_present.remove(iid)
 
+    inject_ensemble_into_assignments(
+        by_id,
+        genre_tags=genre_tags,
+        composition_archetype=archetype,
+        use_case=use_case,
+        energy_level=energy_level,
+        generation_seed=generation_seed,
+        timbre_context=timbre_context,
+        genre_mix=genre_mix,
+    )
+    for ens, generic in ENSEMBLE_REPLACES_OPTIONAL.items():
+        if ens in by_id and generic in by_id:
+            del by_id[generic]
+
     _apply_style_profile_avoids(
         by_id,
         style_profile,
@@ -565,6 +637,11 @@ def validate_orchestration(
         timbre_context=timbre_context,
     )
     _separate_melody_echo_synth_programs(
+        by_id,
+        generation_seed=generation_seed,
+        timbre_context=timbre_context,
+    )
+    _separate_ensemble_programs(
         by_id,
         generation_seed=generation_seed,
         timbre_context=timbre_context,

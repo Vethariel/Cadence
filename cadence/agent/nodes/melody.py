@@ -162,6 +162,21 @@ def compose_melody_track(state: SongState) -> Track:
 
     scale_pitches = _get_scale_pitches(key, mode)
 
+    archetype = get_composition_archetype(state)
+    plan = state.get("orchestration_plan")
+    melody_texture = (
+        getattr(plan, "melody_texture", "balanced") if plan is not None else "balanced"
+    ) or "balanced"
+    dense_target = is_dense_melody_target(
+        archetype,
+        energy_level=energy_level,
+        melody_texture=melody_texture,
+        use_case=intent.use_case,
+    )
+    notes_target = melody_notes_per_bar_target(
+        archetype, energy_level, melody_texture=melody_texture, use_case=intent.use_case,
+    )
+
     repair_context = ""
     retry_n = state.get("retry_count", 0)
     temperature = node_temperature("melody", repair_attempt=retry_n)
@@ -232,20 +247,6 @@ def compose_melody_track(state: SongState) -> Track:
 
     dev_block = _development_hint(state)
 
-    archetype = get_composition_archetype(state)
-    plan = state.get("orchestration_plan")
-    melody_texture = (
-        getattr(plan, "melody_texture", "balanced") if plan is not None else "balanced"
-    ) or "balanced"
-    dense_target = is_dense_melody_target(
-        archetype,
-        energy_level=energy_level,
-        melody_texture=melody_texture,
-        use_case=intent.use_case,
-    )
-    notes_target = melody_notes_per_bar_target(
-        archetype, energy_level, melody_texture=melody_texture, use_case=intent.use_case,
-    )
     archetype_hint = ""
     if archetype == "chiptune_dance" or dense_target:
         label = "CHIPTUNE/DANCE" if archetype == "chiptune_dance" else "DENSE DANCE"
@@ -284,28 +285,35 @@ def compose_melody_track(state: SongState) -> Track:
                 "Evita notas fuera del acorde en drops y climax.\n"
             )
 
-    # phrase length hints per section (primer segmento o resumen)
+    # phrase length hints por micro-arco (cada bloque puede variar fraseo)
     phrase_hints = []
     for section_id in structure.sections:
         dev = dev_map.get(section_id)
         section_intent = intent_map.get(section_id)
-        if dev:
-            active_dev = dev.segments[0] if dev.segments else dev
-            bars = active_dev.phrase_length_bars
+        if not dev:
+            continue
+        rest_pct = int(melody_rest_ratio(
+            section_intent,
+            use_case=intent.use_case,
+            composition_archetype=archetype,
+            energy_level=energy_level,
+            melody_texture=melody_texture,
+        ) * 100)
+        blocks = dev.segments if dev.segments else [dev]
+        for idx, block in enumerate(blocks):
+            bars = block.phrase_length_bars
             if section_intent and section_intent.density >= 0.7:
                 bars = min(bars, 2)
-            rest_pct = int(melody_rest_ratio(
-                section_intent,
-                use_case=intent.use_case,
-                composition_archetype=archetype,
-                energy_level=energy_level,
-                melody_texture=melody_texture,
-            ) * 100)
-            seg_note = (
-                f", {len(dev.segments)} micro-arcos" if dev.segments else ""
+            bar_range = (
+                f"compases {block.start_bar}-{block.end_bar - 1}"
+                if dev.segments
+                else f"{structure.bars_per_section.get(section_id, 4)} compases"
             )
+            transform = getattr(block, "transform", dev.transform)
             phrase_hints.append(
-                f"  - {section_id}: frases de {bars} compases{seg_note}, rests ≤{rest_pct}%"
+                f"  - {section_id} ({bar_range}): frases de {bars} compases, "
+                f"transform={transform}, contour={getattr(block, 'contour', dev.contour)}, "
+                f"rests ≤{rest_pct}%"
             )
 
     system = SystemMessage(content=(

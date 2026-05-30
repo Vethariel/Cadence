@@ -38,6 +38,14 @@ def test_arp_alias_and_variant_pitch():
     assert pa != pb
 
 
+def test_format_rhythm_catalog_uses_family_descriptions():
+    from cadence.music.strategy_pools import format_rhythm_patterns_for_llm
+
+    text = format_rhythm_patterns_for_llm()
+    assert "techno_a, techno_b" in text
+    assert "Kick four-on-the-floor" in text
+
+
 def test_pool_cardinality():
     from cadence.music.strategy_pools import BASS_POOL, DRUM_POOL
     from cadence.music.arp_patterns import ARP_PATTERNS
@@ -50,6 +58,7 @@ def test_pool_cardinality():
 
 
 if __name__ == "__main__":
+    test_format_rhythm_catalog_uses_family_descriptions()
     test_drum_alias_resolves_to_variant()
     test_bass_alias_and_variants_differ()
     test_stab_variants_differ()

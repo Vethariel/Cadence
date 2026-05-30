@@ -25,7 +25,7 @@ from cadence.music.repertoire_signals import (
     percussion_suppressed,
 )
 from cadence.music.style_archetype import get_composition_archetype
-from cadence.music.style_profile import effective_genre_tags
+from cadence.music.style_profile import build_genre_mix, effective_genre_tags
 from cadence.music.layer_schedule import (
     DENSITY_ARP,
     DENSITY_CHORD_STAB,
@@ -34,6 +34,12 @@ from cadence.music.layer_schedule import (
     DENSITY_PERC,
     DENSITY_PLUCK,
     build_layer_schedule,
+)
+from cadence.music.ensemble_policy import (
+    ENSEMBLE_INSTRUMENT_IDS,
+    ensemble_min_density,
+    resolve_ensemble_conflicts,
+    select_ensemble_families,
 )
 from cadence.music.orchestral_arrangement import (
     apply_orchestral_boss_instruments,
@@ -97,8 +103,10 @@ def _layer_spec(
     instrument_id: str,
     active_sections: list[str],
     plan: OrchestrationPlan | None,
+    *,
+    min_density: float | None = None,
 ) -> LayerSpec:
-    strategy, default_mix, min_density = LAYER_DEFAULTS.get(
+    strategy, default_mix, default_min = LAYER_DEFAULTS.get(
         instrument_id,
         ("loop_1bar", -10.0, 0.0),
     )
@@ -107,7 +115,7 @@ def _layer_spec(
         active_sections=active_sections,
         pattern_strategy=strategy,
         mix_level=_mix_for(plan, instrument_id, default_mix),
-        min_density=min_density,
+        min_density=min_density if min_density is not None else default_min,
     )
 
 
@@ -153,6 +161,16 @@ def _effective_instruments(state: SongState, plan: OrchestrationPlan) -> set[str
     )
     if archetype == "orchestral_boss":
         capped = apply_orchestral_boss_instruments(capped, energy)
+    genre_tags = effective_genre_tags(state)
+    capped |= select_ensemble_families(
+        genre_tags=genre_tags,
+        composition_archetype=archetype,
+        use_case=intent.use_case,
+        energy_level=energy,
+        generation_seed=state.get("generation_seed", 0),
+        genre_mix=build_genre_mix(proposal_tags=genre_tags) if genre_tags else None,
+    )
+    capped = resolve_ensemble_conflicts(capped)
     if "restore_optional_layers" in repair_actions:
         return capped
     return clamp_optional_layer_ids(capped, state.get("creative_variation"))
@@ -290,6 +308,34 @@ def _build_layers_from_orchestration(
     for iid, sections in optional_sections:
         if sections:
             layers.append(_layer_spec(iid, sections, plan))
+
+    for ens_id in sorted(ENSEMBLE_INSTRUMENT_IDS):
+        if ens_id not in chosen:
+            continue
+        ens_sections: list[str] = []
+        floor = ensemble_min_density(ens_id)
+        for section_id in structure.sections:
+            sec_intent = intent_map.get(section_id)
+            density = sec_intent.density if sec_intent else 0.5
+            if orchestral:
+                floor = orchestral_density_threshold(floor, energy)
+            if density >= floor:
+                ens_sections.append(section_id)
+        if orchestral and not ens_sections:
+            for section_id in structure.sections:
+                sec_intent = intent_map.get(section_id)
+                if sec_intent and (
+                    sec_intent.narrative_role in ("climax", "tension", "establish")
+                    or sec_intent.density >= 0.4
+                ):
+                    ens_sections.append(section_id)
+        if ens_sections:
+            layers.append(_layer_spec(
+                ens_id,
+                ens_sections,
+                plan,
+                min_density=floor,
+            ))
 
     return _ensure_texture_bed_layers(
         layers, structure, state["intent"].use_case,

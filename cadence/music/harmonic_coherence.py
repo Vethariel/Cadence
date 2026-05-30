@@ -16,6 +16,7 @@ from cadence.schemas.song_state import (
 # Capas que anclan la armonía (excluye drums/perc/fx)
 HARMONIC_SUPPORT_IDS = frozenset({
     "arp_synth", "countermelody", "synth_pluck", "chord_stab", "pad",
+    "strings_ensemble", "keys_organ",
 })
 
 LEAD_SUPPORT_IDS = ("arp_synth", "countermelody", "synth_pluck", "chord_stab")
@@ -151,6 +152,8 @@ def max_lead_support_slots(
     if arch == "compact_action":
         return 1
     if arch == "orchestral_boss" and energy_level >= 5:
+        return 4
+    if arch == "orchestral_boss" and energy_level >= 4:
         return 3
     if arch == "chiptune_dance" and energy_level >= 5:
         return 3
@@ -188,7 +191,11 @@ def apply_lead_support_cap(
         if iid in protected or iid not in kept:
             kept.append(iid)
 
-    result = {iid for iid in active_ids if iid in ("drums", "bass", "melody", "pad", "perc_aux", "fx_riser")}
+    from cadence.music.ensemble_policy import ENSEMBLE_INSTRUMENT_IDS
+
+    core_ids = ("drums", "bass", "melody", "pad", "perc_aux", "fx_riser")
+    result = {iid for iid in active_ids if iid in core_ids}
+    result |= {iid for iid in active_ids if iid in ENSEMBLE_INSTRUMENT_IDS}
     result |= set(kept)
 
     uc = (use_case or "game").lower()

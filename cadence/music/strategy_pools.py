@@ -55,6 +55,8 @@ BASS_PATTERN_INFO: dict[str, str] = {
     "half_time": "Raíz en 1 y 3 con quinta — half-time dubstep/trap.",
     "walk": "Caminata cromática en semicorcheas — jazz/funk game.",
     "octave_pulse": "Raíz en cada negra — sub presión constante.",
+    "staccato": "Raíz y quinta cortas — groove seco, dance/chiptune.",
+    "sub_drop": "Raíz espaciada con remate — drops de bass music.",
 }
 
 # ── Pools de progresiones armónicas ───────────────────────────
@@ -202,12 +204,35 @@ def compute_generation_seed(raw_prompt: str, total_bars: int) -> int:
 
 def format_rhythm_patterns_for_llm() -> str:
     """Catálogo drum/bass para el instrument_planner."""
-    lines = ["Patrones de batería (elige EXACTAMENTE uno — obligatorio):"]
-    for pid in DRUM_POOL:
-        lines.append(f"  • {pid}: {DRUM_PATTERN_INFO[pid]}")
-    lines.append("\nPatrones de bajo (elige EXACTAMENTE uno — obligatorio):")
-    for pid in BASS_POOL:
-        lines.append(f"  • {pid}: {BASS_PATTERN_INFO[pid]}")
+    from cadence.music.pattern_registry import pattern_family
+
+    def _catalog_lines(
+        pool: list[str],
+        info: dict[str, str],
+        label: str,
+    ) -> list[str]:
+        out = [label]
+        seen: set[str] = set()
+        for pid in pool:
+            fam = pattern_family(pid)
+            if fam in seen:
+                continue
+            seen.add(fam)
+            variants = [p for p in pool if pattern_family(p) == fam]
+            desc = info.get(fam, f"Patrón {fam}.")
+            out.append(f"  • {', '.join(variants)}: {desc}")
+        return out
+
+    lines = _catalog_lines(
+        DRUM_POOL,
+        DRUM_PATTERN_INFO,
+        "Patrones de batería (elige EXACTAMENTE uno — obligatorio):",
+    )
+    lines.extend(_catalog_lines(
+        BASS_POOL,
+        BASS_PATTERN_INFO,
+        "\nPatrones de bajo (elige EXACTAMENTE uno — obligatorio):",
+    ))
     lines.append(
         "\nElige drum y bass coherentes con género, energía y use_case. "
         "Varía respecto a un default genérico cuando el mood lo permita."

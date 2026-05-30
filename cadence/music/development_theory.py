@@ -364,12 +364,24 @@ def build_development_plan(
         composition_archetype=composition_archetype,
     )
 
-    return DevelopmentPlan(
+    plan = DevelopmentPlan(
         global_motif=motif,
         sections=section_devs,
         generation_seed=generation_seed,
         texture_mode=texture_mode,
     )
+    from cadence.music.segment_variation import boost_texture_mode_for_segments
+
+    boosted = boost_texture_mode_for_segments(
+        plan.texture_mode,
+        plan,
+        use_case=use_case,
+        energy_level=energy_level,
+        narrative_sections=narrative_sections,
+    )
+    if boosted != plan.texture_mode:
+        plan = plan.model_copy(update={"texture_mode": boosted})
+    return plan
 
 
 def section_development_map(plan: DevelopmentPlan | None) -> dict[str, SectionDevelopment]:

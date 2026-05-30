@@ -30,12 +30,13 @@ def development_planner_node(state: SongState) -> dict:
     section_ids = (
         list(contract.section_ids) if contract else list(structure.sections)
     )
+    intent_map = contract_section_intent_map(
+        narrative, contract, context="development_planner", state=state,
+    )
     development = build_development_plan(
         sections=section_ids,
         global_motif=global_motif,
-        narrative_sections=contract_section_intent_map(
-            narrative, contract, context="development_planner", state=state,
-        ),
+        narrative_sections=intent_map,
         generation_seed=seed,
         energy_level=energy,
         bars_per_section=structure.bars_per_section,
@@ -43,4 +44,18 @@ def development_planner_node(state: SongState) -> dict:
         composition_archetype=archetype,
     )
 
-    return {"development": development}
+    out: dict = {"development": development}
+    harmony = state.get("harmony")
+    if harmony:
+        from cadence.music.segment_variation import enrich_harmony_with_segments
+
+        strategies = state.get("strategies")
+        pool = strategies.harmony_pool if strategies else None
+        out["harmony"] = enrich_harmony_with_segments(
+            harmony,
+            development,
+            intent_map,
+            seed=seed,
+            harmony_pool=pool,
+        )
+    return out

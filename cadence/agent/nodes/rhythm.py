@@ -19,7 +19,13 @@ from cadence.music.harmony_theory import (
     chord_pitches,
     section_harmony_map,
 )
-from cadence.music.strategy_pools import get_bass_pattern, get_drum_pattern
+from cadence.music.development_theory import section_development_map
+from cadence.music.segment_variation import (
+    pattern_id_for_segment,
+    segment_at_bar,
+    segment_index_at_bar,
+)
+from cadence.music.strategy_pools import BASS_POOL, DRUM_POOL, get_bass_pattern, get_drum_pattern
 
 
 # ── Patrones de batería por estilo ────────────────────────────
@@ -86,8 +92,13 @@ def _generate_drum_track(
     genre_tags: list[str],
     intent_map: dict[str, SectionIntent] | None = None,
     drum_pattern_id: str | None = None,
+    *,
+    development=None,
+    generation_seed: int = 0,
 ) -> Track:
-    pattern = _select_pattern(genre_tags, drum_pattern_id)
+    base_pattern_id = drum_pattern_id or "default"
+    base_pattern = _select_pattern(genre_tags, base_pattern_id)
+    dev_map = section_development_map(development)
     step_ms = _ms_per_step(bpm)
     steps_per_bar = 16
     events = []
@@ -99,8 +110,21 @@ def _generate_drum_track(
         bars = bars_per_section.get(section, 4)
         intent = intent_map.get(section)
         velocities = drum_velocities(section, intent, SECTION_VELOCITY)
+        sec_dev = dev_map.get(section)
 
         for bar_idx in range(bars):
+            pattern = base_pattern
+            if sec_dev and sec_dev.segments:
+                seg = segment_at_bar(sec_dev, bar_idx)
+                seg_idx = segment_index_at_bar(sec_dev, bar_idx)
+                pid = pattern_id_for_segment(
+                    base_pattern_id,
+                    seg_idx,
+                    seg.transform if seg else sec_dev.transform,
+                    generation_seed + hash(section) % 9973,
+                    DRUM_POOL,
+                )
+                pattern = get_drum_pattern(pid)
             is_last_bar = bar_idx == bars - 1
             transition_out = (
                 intent.transition_out
@@ -170,6 +194,9 @@ def _generate_bass_track(
     intent_map: dict[str, SectionIntent] | None = None,
     harmony: HarmonyPlan | None = None,
     bass_pattern_id: str | None = None,
+    *,
+    development=None,
+    generation_seed: int = 0,
 ) -> Track:
     step_ms = _ms_per_step(bpm)
     steps_per_bar = 16
@@ -180,7 +207,8 @@ def _generate_bass_track(
     current_t = 0
     intent_map = intent_map or {}
     harmony_map = section_harmony_map(harmony)
-    bass_steps = get_bass_pattern(bass_pattern_id or "root_fifth")
+    base_bass_id = bass_pattern_id or "root_fifth"
+    dev_map = section_development_map(development)
 
     for section in sections:
         bars = bars_per_section.get(section, 4)
@@ -194,9 +222,22 @@ def _generate_bass_track(
         density = intent.density if intent else 0.7
         base_vel = int(55 + density * 45)
         section_h = harmony_map.get(section)
+        sec_dev = dev_map.get(section)
 
         for bar_idx in range(bars):
             octave_shift = 12 if bar_idx % 2 == 1 and (intent and intent.rhythmic_complexity >= 0.5) else 0
+            bass_steps = get_bass_pattern(base_bass_id)
+            if sec_dev and sec_dev.segments:
+                seg = segment_at_bar(sec_dev, bar_idx)
+                seg_idx = segment_index_at_bar(sec_dev, bar_idx)
+                pid = pattern_id_for_segment(
+                    base_bass_id,
+                    seg_idx,
+                    seg.transform if seg else sec_dev.transform,
+                    generation_seed + hash(section) % 9973 + 3,
+                    BASS_POOL,
+                )
+                bass_steps = get_bass_pattern(pid)
 
             if section_h:
                 chord = chord_at_bar(section_h, bar_idx)
@@ -267,7 +308,9 @@ def rhythm_engine_node(state: SongState) -> dict:
 
     harmony = state.get("harmony")
     strategies = state.get("strategies")
+    development = state.get("development")
     intent_map = section_intent_map_from_state(state, context="rhythm_engine")
+    gen_seed = state.get("generation_seed", 0)
 
     drums = _generate_drum_track(
         sections=structure.sections,
@@ -276,6 +319,8 @@ def rhythm_engine_node(state: SongState) -> dict:
         genre_tags=genre_tags,
         intent_map=intent_map,
         drum_pattern_id=strategies.drum_pattern if strategies else None,
+        development=development,
+        generation_seed=gen_seed,
     )
 
     bass = _generate_bass_track(
@@ -287,6 +332,8 @@ def rhythm_engine_node(state: SongState) -> dict:
         intent_map=intent_map,
         harmony=harmony,
         bass_pattern_id=strategies.bass_pattern if strategies else None,
+        development=development,
+        generation_seed=gen_seed,
     )
 
     existing = [t for t in state.get("tracks", []) if t.id not in ("drums", "bass")]

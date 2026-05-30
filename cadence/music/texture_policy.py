@@ -105,6 +105,7 @@ def segment_layer_delta(
     texture_mode: TextureMode,
     use_case: str,
     available: set[str],
+    segment_index: int = 0,
 ) -> tuple[list[str], list[str]]:
     """Capas a añadir/quitar al inicio de un DevelopmentSegment."""
     add: list[str] = []
@@ -112,9 +113,11 @@ def segment_layer_delta(
     uc = (use_case or "game").lower()
 
     if texture_mode == "bedded" or uc in ("loop", "cutscene"):
-        for lid in BED_CORE:
-            if lid in available:
-                add.append(lid)
+        # Solo re-entrar cama en el primer micro-arco (evita spam de add pad/bass)
+        if segment_index == 0:
+            for lid in BED_CORE:
+                if lid in available:
+                    add.append(lid)
 
     sparse_like = transform in ("sparse", "fragment", "resolve", "pedal")
     dense_like = transform in ("climax", "augment", "call_response", "sequence_up")
@@ -126,6 +129,10 @@ def segment_layer_delta(
     elif dense_like and texture_mode in ("simultaneous", "staggered", "compact"):
         order = ("arp_synth", "countermelody", "chord_stab", "echo_synth", "synth_pluck", "perc_aux")
         cap = 3 if texture_mode == "simultaneous" else (1 if texture_mode == "compact" else 2)
+        if segment_index >= 1 and texture_mode == "staggered":
+            cap = min(cap + 1, 3)
+        if segment_index >= 2 and texture_mode == "simultaneous":
+            cap = min(cap + 1, 4)
         for lid in order:
             if lid in available and len([x for x in add if x in LEAD_SUPPORTS]) < cap:
                 add.append(lid)
@@ -161,13 +168,14 @@ def build_segment_schedule_pending(
             continue
         intent = intent_map.get(sec_dev.section_id)
         base_bar = starts.get(sec_dev.section_id, 0)
-        for seg in sec_dev.segments:
+        for seg_idx, seg in enumerate(sec_dev.segments):
             gbar = base_bar + seg.start_bar
             add, remove = segment_layer_delta(
                 seg.transform,
                 texture_mode=texture_mode,
                 use_case=use_case,
                 available=available,
+                segment_index=seg_idx,
             )
             for lid in remove:
                 pending.append((gbar, "remove", lid))

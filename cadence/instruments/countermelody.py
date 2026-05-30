@@ -5,9 +5,12 @@ from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.agent.nodes.narrative_apply import melody_should_play
 from cadence.music.narrative_contract import section_intent_map_from_state
 from cadence.music.seed_policy import seed_for_state
-from cadence.music.development_theory import section_development_map
+from cadence.music.development_theory import development_for_bar, section_development_map
 from cadence.music.harmony_theory import chord_at_bar, chord_tones_as_degrees, section_harmony_map
-from cadence.music.instrument_patterns import counter_steps
+from cadence.music.instrument_patterns import COUNTER_PATTERN_POOL, counter_steps
+from cadence.music.layer_voice_variation import counter_skip_step, pitch_shift_for_transform
+from cadence.music.segment_variation import segment_at_bar, segment_index_at_bar, pattern_id_for_segment
+from cadence.music.style_archetype import get_composition_archetype
 from cadence.schemas.song_state import RhythmEvent, Track
 
 
@@ -33,8 +36,11 @@ def _compose_countermelody(ctx: ComposeContext) -> Track | None:
 
     strategies = ctx.state.get("strategies")
     seed = seed_for_state(ctx.state, "countermelody") or ctx.state.get("generation_seed", 0)
-    counter_pattern = strategies.counter_pattern if strategies else None
-    step_pattern = counter_steps(counter_pattern, seed)
+    base_counter = strategies.counter_pattern if strategies else None
+    archetype = get_composition_archetype(ctx.state)
+    texture_mode = (
+        development.texture_mode if development else "staggered"
+    )
 
     step_ms = _ms_per_step(ctx.bpm)
     steps_per_bar = 16
@@ -58,10 +64,27 @@ def _compose_countermelody(ctx: ComposeContext) -> Track | None:
             beat_index += bars * steps_per_bar
             continue
 
-        motif = dev.motif_variant or development.global_motif or [0, 2, 4]
-        base_vel = int(45 + density * 35)
+        base_vel = int(42 + density * 32)
+        if texture_mode == "bedded" or archetype == "cinematic_cutscene":
+            base_vel = int(38 + density * 28)
 
         for bar_idx in range(bars):
+            bar_dev = development_for_bar(dev, bar_idx)
+            seg = segment_at_bar(dev, bar_idx) if dev.segments else None
+            seg_idx = segment_index_at_bar(dev, bar_idx) if dev.segments else 0
+            transform = bar_dev.transform
+            motif = bar_dev.motif_variant or development.global_motif or [0, 2, 4]
+
+            pat_id = pattern_id_for_segment(
+                base_counter or "offbeat_sync_a",
+                seg_idx,
+                transform,
+                seed + hash(section) % 9973,
+                COUNTER_PATTERN_POOL,
+            )
+            step_pattern = counter_steps(pat_id, seed + seg_idx * 11)
+            pitch_shift = pitch_shift_for_transform(transform, seg_idx)
+
             section_h = harmony_map.get(section)
             chord_degrees = motif
             if section_h:
@@ -69,11 +92,17 @@ def _compose_countermelody(ctx: ComposeContext) -> Track | None:
                 chord_degrees = chord_tones_as_degrees(chord)
 
             for step_i, step in enumerate(step_pattern):
+                if counter_skip_step(
+                    step_i, transform,
+                    texture_mode=texture_mode,
+                    events_per_bar=len(step_pattern),
+                ):
+                    continue
                 degree = chord_degrees[step_i % len(chord_degrees)] % 7
-                if dev.transform == "invert":
+                if transform == "invert":
                     degree = (6 - degree) % 7
-                pitch = scale_pitches[degree] + 12
-                pitch = max(72, min(96, pitch))
+                pitch = scale_pitches[degree] + pitch_shift
+                pitch = max(60, min(103, pitch))
                 events.append(RhythmEvent(
                     t=int(current_t + step * step_ms),
                     type="note",

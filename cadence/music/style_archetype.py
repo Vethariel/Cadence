@@ -245,11 +245,35 @@ def infer_composition_archetype_with_reason(
             f"use_case={uc!r} energy={energy} prompt_loop_terms",
         )
 
+    # Boss orquestal en game: tags/prompt de combate + orquesta ganan a cutscene genérico
+    if (
+        uc == "game"
+        and energy >= 4
+        and _tags_have(keys, _ORCHESTRAL_TAGS)
+        and (
+            _prompt_has(prompt, _BOSS_PROMPT)
+            or _tags_have(keys, frozenset({"boss fight", "combat", "boss"}))
+        )
+    ):
+        return ArchetypeDecision(
+            "orchestral_boss",
+            f"use_case=game boss_orchestral_tags energy={energy}",
+        )
+
     if uc == "cutscene" or _prompt_has(prompt, _CUTSCENE_PROMPT):
         if _prompt_has(prompt, _CHIPTUNE_PROMPT) and not _tags_have(keys, _ORCHESTRAL_TAGS):
             return ArchetypeDecision(
                 "chiptune_dance",
                 "cutscene_with_chiptune_prompt_terms",
+            )
+        if (
+            energy >= 4
+            and _tags_have(keys, _ORCHESTRAL_TAGS)
+            and _prompt_has(prompt, _BOSS_PROMPT)
+        ):
+            return ArchetypeDecision(
+                "orchestral_boss",
+                "cutscene_terms_but_boss_orchestral_tags",
             )
         return ArchetypeDecision(
             "cinematic_cutscene",

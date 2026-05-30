@@ -58,22 +58,39 @@ def _compute_intensity_curve(state: SongState) -> list[float]:
     return curve
 
 def _compute_cue_points(state: SongState) -> list[dict]:
-    """Genera cue points semánticos basados en las secciones."""
+    """Cue points por sección y por micro-arco (drop_1, drop_2, …)."""
+    from cadence.music.development_theory import section_development_map
+    from cadence.music.segment_variation import segment_cue_label
+
     structure = state["structure"]
     proposal = state.get("technical_proposal")
     bpm = proposal.bpm if proposal else 120
     beats_per_bar = 4
     ms_per_bar = (60000 / bpm) * beats_per_bar
 
-    cue_points = []
+    dev_map = section_development_map(state.get("development"))
+    cue_points: list[dict] = []
     current_ms = 0
 
     for section in structure.sections:
         cue_points.append({
             "label": section,
             "t": int(current_ms),
+            "kind": "section",
         })
         bars = structure.bars_per_section.get(section, 4)
+        sec_dev = dev_map.get(section)
+        if sec_dev and len(sec_dev.segments) > 1:
+            for idx, seg in enumerate(sec_dev.segments):
+                cue_points.append({
+                    "label": segment_cue_label(section, idx),
+                    "t": int(current_ms + seg.start_bar * ms_per_bar),
+                    "kind": "segment",
+                    "parent_section": section,
+                    "segment_index": idx,
+                    "transform": seg.transform,
+                    "bars": seg.end_bar - seg.start_bar,
+                })
         current_ms += bars * ms_per_bar
 
     return cue_points

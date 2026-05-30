@@ -7,6 +7,7 @@ from cadence.config import settings
 from cadence.music.narrative_anchors import format_anchors_for_llm
 from cadence.music.creative_variation import format_variation_for_llm
 from cadence.music.section_refs import format_section_ids_for_llm
+from cadence.music.style_profile import effective_genre_tags
 from cadence.music.style_archetype import get_composition_archetype
 from cadence.music.seed_policy import node_temperature, seed_for_state
 from cadence.music.arp_patterns import ARP_PATTERNS
@@ -130,6 +131,16 @@ def instrument_planner_node(state: SongState) -> dict:
         temperature=node_temperature("instrument_planner"),
     ).with_structured_output(_AgentOrchestrationOutput)
 
+    from cadence.music.ensemble_policy import format_ensemble_hint_for_llm
+
+    energy = proposal.energy_level
+    ensemble_hint = format_ensemble_hint_for_llm(
+        genre_tags=effective_genre_tags(state),
+        composition_archetype=archetype,
+        use_case=intent.use_case,
+        energy_level=energy,
+    )
+
     catalog = format_catalog_for_llm()
     timbre_catalog = format_timbre_catalog_for_llm()
     rhythm_catalog = format_rhythm_patterns_for_llm()
@@ -165,7 +176,8 @@ def instrument_planner_node(state: SongState) -> dict:
         "- Si activas chord_stab → stab_pattern. perc_aux → perc_pattern. "
         "synth_pluck → pluck_pattern. countermelody → counter_pattern.\n"
         "- active_sections y planificación: usa EXACTAMENTE los section IDs canónicos "
-        "indicados en el mensaje humano.\n\n"
+        "indicados en el mensaje humano.\n"
+        f"{ensemble_hint}\n"
         "Responde SOLO con el objeto estructurado."
     ))
 

@@ -1,13 +1,16 @@
 """Compositor determinista de pad — acordes sostenidos desde HarmonyPlan."""
 
 from cadence.schemas.song_state import HarmonyPlan, SongState, Track, RhythmEvent
+from cadence.music.development_theory import section_development_map
 from cadence.music.harmony_theory import (
     chord_at_bar,
     chord_pitches,
     section_harmony_map,
 )
+from cadence.music.layer_voice_variation import pad_octave_for_transform, pad_velocity_scale
 from cadence.music.narrative_contract import contract_section_intent_map
-from cadence.schemas.song_state import SectionIntent
+from cadence.music.segment_variation import segment_at_bar
+from cadence.schemas.song_state import SectionDevelopment, SectionIntent
 
 
 def _ms_per_bar(bpm: int) -> float:
@@ -26,6 +29,8 @@ def _generate_pad_track(
     bpm: int,
     harmony: HarmonyPlan,
     intent_map: dict[str, SectionIntent] | None = None,
+    *,
+    dev_map: dict[str, SectionDevelopment] | None = None,
 ) -> Track:
     harmony_map = section_harmony_map(harmony)
     intent_map = intent_map or {}
@@ -51,12 +56,24 @@ def _generate_pad_track(
             beat_index += bars * steps_per_bar
             continue
 
-        base_vel = int(35 + density * 35)
+        role = intent.narrative_role if intent else "establish"
+        sec_dev = dev_map.get(section) if dev_map else None
 
         for bar_idx in range(bars):
+            transform = "introduce"
+            if sec_dev and sec_dev.segments:
+                seg = segment_at_bar(sec_dev, bar_idx)
+                transform = seg.transform if seg else sec_dev.transform
+            elif sec_dev:
+                transform = sec_dev.transform
+
+            octave = pad_octave_for_transform(transform, role)
+            vel_scale = pad_velocity_scale(transform, role)
+            base_vel = int((35 + density * 35) * vel_scale)
             chord = chord_at_bar(section_h, bar_idx)
-            pitches = chord_pitches(harmony.key, harmony.mode, chord, octave=3)
-            duration_ms = int(ms_per_bar * 0.95)
+            pitches = chord_pitches(harmony.key, harmony.mode, chord, octave=octave)
+            sustain = 0.95 if transform not in ("sparse", "pedal", "resolve") else 0.65
+            duration_ms = int(ms_per_bar * sustain)
 
             for pitch in pitches:
                 events.append(RhythmEvent(
@@ -99,12 +116,15 @@ def pad_composer_node(state: SongState) -> dict:
         state=state,
     )
 
+    from cadence.music.development_theory import section_development_map
+
     pad = _generate_pad_track(
         sections=structure.sections,
         bars_per_section=structure.bars_per_section,
         bpm=bpm,
         harmony=harmony,
         intent_map=intent_map,
+        dev_map=section_development_map(state.get("development")),
     )
 
     existing = [t for t in state.get("tracks", []) if t.id != "pad"]

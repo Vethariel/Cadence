@@ -61,10 +61,41 @@ def _compose_echo_synth(ctx: ComposeContext) -> Track | None:
 
     vel_scale = 0.55 if source_id == "chord_stab" else 0.6
 
+    from cadence.music.layer_voice_variation import (
+        echo_should_include_note,
+        section_echo_cap,
+    )
+    from cadence.music.style_archetype import get_composition_archetype
+    from collections import Counter
+
+    proposal = ctx.state.get("technical_proposal")
+    energy = proposal.energy_level if proposal else 3
+    arch = get_composition_archetype(ctx.state)
+    max_echo = section_echo_cap(
+        energy_level=energy,
+        composition_archetype=arch,
+    )
+    melody_per_sec = Counter(
+        e.section for e in source.events if e.type == "note"
+    )
+    echo_per_sec: Counter[str] = Counter()
+
     events: list[RhythmEvent] = []
+    note_idx = 0
     for e in source.events:
         if e.type != "note":
             continue
+        sec = e.section
+        if not echo_should_include_note(
+            note_idx,
+            melody_notes_in_section=melody_per_sec[sec],
+            echo_notes_in_section=echo_per_sec[sec],
+            section_max_echo=max_echo,
+        ):
+            note_idx += 1
+            continue
+        echo_per_sec[sec] += 1
+        note_idx += 1
         events.append(RhythmEvent(
             t=e.t + delay_ms,
             type="note",

@@ -251,6 +251,58 @@ EXTENDED_TIMBRES: dict[str, list[tuple[int, str, str]]] = {
         (102, "FX Echoes", "cinematic,space"),
         (103, "FX Sci-Fi", "techno,space"),
     ],
+    # Familias ensemble — varias maderas/teclas/guitarras en la misma pieza
+    "woodwind_a": [
+        (73, "Flute", "orchestral,ambient,cinematic"),
+        (71, "Clarinet", "orchestral,jazz"),
+        (68, "Oboe", "orchestral,cinematic"),
+        (78, "Whistle", "folk,game"),
+    ],
+    "woodwind_b": [
+        (72, "Piccolo", "orchestral,boss"),
+        (73, "Flute", "orchestral,ambient"),
+        (75, "Pan Flute", "folk,cinematic"),
+        (79, "Ocarina", "chiptune,folk"),
+    ],
+    "keys_piano": [
+        (0, "Acoustic Grand Piano", "cinematic,cutscene,folk"),
+        (1, "Bright Acoustic Piano", "pop,cinematic,game"),
+        (2, "Electric Grand Piano", "pop,dance,game"),
+        (4, "Electric Piano 1", "jazz,cinematic,dance"),
+        (5, "Electric Piano 2", "jazz,pop"),
+    ],
+    "keys_organ": [
+        (16, "Drawbar Organ", "retro,game,rock"),
+        (17, "Percussive Organ", "rock,game"),
+        (18, "Rock Organ", "rock,boss"),
+        (19, "Church Organ", "orchestral,cinematic,gothic"),
+        (20, "Reed Organ", "folk,cinematic"),
+    ],
+    "strings_ensemble": [
+        (48, "String Ensemble 1", "orchestral,cinematic"),
+        (49, "String Tremolo", "orchestral,boss"),
+        (44, "Tremolo Strings", "cinematic,boss"),
+        (50, "Synth Strings 1", "orchestral,synth"),
+        (52, "Choir Aahs", "orchestral,boss"),
+    ],
+    "guitar_acoustic": [
+        (24, "Nylon Guitar", "folk,game,cutscene"),
+        (25, "Steel Guitar", "folk,country,cinematic"),
+        (26, "Jazz Guitar", "jazz,cinematic"),
+    ],
+    "guitar_electric": [
+        (27, "Clean Electric Guitar", "rock,pop,game"),
+        (28, "Muted Guitar", "funk,dance"),
+        (29, "Overdriven Guitar", "rock,metal,boss"),
+        (30, "Distortion Guitar", "metal,boss"),
+    ],
+    "brass_a": [
+        (56, "Trumpet", "orchestral,boss"),
+        (57, "Trombone", "orchestral,jazz"),
+        (60, "French Horn", "orchestral,cinematic"),
+        (61, "Brass Section", "orchestral,boss"),
+        (62, "Synth Brass 1", "dubstep,synth"),
+    ],
 }
 
 
