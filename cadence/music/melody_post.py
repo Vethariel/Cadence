@@ -280,6 +280,48 @@ def process_melody_events(
     return sorted(events, key=lambda e: e.t)
 
 
+def _maybe_quantize_to_harmony(
+    events: list[RhythmEvent],
+    state: SongState,
+    *,
+    bpm: int,
+    key: str,
+    mode: str,
+) -> list[RhythmEvent]:
+    from cadence.music.harmonic_coherence import (
+        active_instrument_ids_from_plan,
+        count_harmonic_support_layers,
+        quantize_melody_events_to_harmony,
+        should_quantize_melody_to_chords,
+    )
+
+    proposal = state.get("technical_proposal")
+    structure = state.get("structure")
+    harmony = state.get("harmony")
+    intent = state.get("intent")
+    plan = state.get("orchestration_plan")
+    if not proposal or not structure or not harmony:
+        return events
+
+    energy = proposal.energy_level
+    use_case = intent.use_case if intent else "game"
+    active = active_instrument_ids_from_plan(plan)
+    if not should_quantize_melody_to_chords(
+        count_harmonic_support_layers(active), energy, use_case,
+    ):
+        return events
+
+    return quantize_melody_events_to_harmony(
+        events,
+        harmony=harmony,
+        structure_sections=structure.sections,
+        bars_per_section=structure.bars_per_section,
+        key=key,
+        mode=mode,
+        bpm=bpm,
+    )
+
+
 def process_melody_track(track: Track, state: SongState) -> Track:
     proposal = state.get("technical_proposal")
     intent = state["intent"]
@@ -304,6 +346,7 @@ def process_melody_track(track: Track, state: SongState) -> Track:
         energy_level=energy,
         melody_texture=melody_texture,
     )
+    events = _maybe_quantize_to_harmony(events, state, bpm=bpm, key=key, mode=mode)
     return track.model_copy(update={"events": events})
 
 

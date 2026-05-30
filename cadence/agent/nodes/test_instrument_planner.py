@@ -127,6 +127,17 @@ def test_agent_rhythm_patterns_applied_to_strategies():
     print("✓ test_agent_rhythm_patterns_applied_to_strategies OK")
 
 
+def test_harmony_pool_dense_stack_overrides_bland_agent():
+    merged = _apply_plan_to_strategies(
+        GenerationStrategies(generation_seed=1, harmony_pool="aggressive"),
+        _plan(harmony_pool="cinematic"),
+        energy_level=5,
+        use_case="game",
+    )
+    assert merged.harmony_pool == "aggressive"
+    print("✓ test_harmony_pool_dense_stack_overrides_bland_agent OK")
+
+
 def test_agent_layer_patterns_applied_to_strategies():
     plan = _plan(
         stab_pattern="dubstep_off",
@@ -244,6 +255,27 @@ def test_melody_chord_stab_cannot_share_gm_program():
     print("✓ test_melody_chord_stab_cannot_share_gm_program OK")
 
 
+def test_melody_countermelody_cannot_share_gm_program():
+    plan = _plan(
+        instruments=[
+            InstrumentAssignment(instrument_id="drums", gm_program=0, active=True),
+            InstrumentAssignment(instrument_id="bass", gm_program=39, active=True),
+            InstrumentAssignment(instrument_id="melody", gm_program=81, active=True),
+            InstrumentAssignment(instrument_id="countermelody", gm_program=81, active=True),
+        ],
+    )
+    validated = validate_orchestration(
+        plan,
+        use_case="game",
+        energy_level=5,
+        generation_seed=42,
+    )
+    by_id = {a.instrument_id: a for a in validated.instruments}
+    assert "countermelody" in by_id
+    assert by_id["melody"].gm_program != by_id["countermelody"].gm_program
+    print("✓ test_melody_countermelody_cannot_share_gm_program OK")
+
+
 def test_style_profile_avoids_incoherent_timbres():
     profile = MusicalStyleProfile(
         avoid=["calliope", "music box", "orchestral strings"],
@@ -295,12 +327,14 @@ if __name__ == "__main__":
     test_resolve_timbre_snaps_to_catalog()
     test_validate_uses_catalog_display_name()
     test_agent_rhythm_patterns_applied_to_strategies()
+    test_harmony_pool_dense_stack_overrides_bland_agent()
     test_agent_layer_patterns_applied_to_strategies()
     test_resolve_rhythm_patterns_fallback_by_genre()
     test_loop_energy_uses_pulse_bass_fallback()
     test_arrangement_from_orchestration_plan()
     test_apply_orchestration_gm()
     test_melody_chord_stab_cannot_share_gm_program()
+    test_melody_countermelody_cannot_share_gm_program()
     test_style_profile_avoids_incoherent_timbres()
     test_style_profile_no_avoid_keeps_programs()
     print("\nAll instrument planner tests passed.")

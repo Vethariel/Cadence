@@ -5,27 +5,35 @@ from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.music.layer_schedule import filter_events_by_schedule, ms_per_bar
 from cadence.schemas.song_state import RhythmEvent, Track
 
-ECHO_SOURCES = ("auto", "melody", "arp_synth", "chord_stab")
-_SOURCE_PRIORITY = ("melody", "arp_synth", "chord_stab")
-
-
 def _resolve_echo_source_id(ctx: ComposeContext) -> str | None:
+    from cadence.music.harmonic_coherence import (
+        active_instrument_ids_from_plan,
+        resolve_echo_source_for_stack,
+    )
+
     strategies = ctx.state.get("strategies")
-    preference = strategies.echo_source if strategies else "auto"
-    if preference not in ECHO_SOURCES:
-        preference = "auto"
+    proposal = ctx.state.get("technical_proposal")
+    intent = ctx.state.get("intent")
+    plan = ctx.state.get("orchestration_plan")
+    energy = proposal.energy_level if proposal else 3
+    use_case = intent.use_case if intent else "game"
+
+    active_plan = active_instrument_ids_from_plan(plan)
+    preference = resolve_echo_source_for_stack(
+        strategies, active_plan, energy_level=energy, use_case=use_case,
+    )
 
     tracks = ctx.state.get("tracks", [])
     by_id = {t.id: t for t in tracks}
+    src = by_id.get(preference)
+    if src and src.events:
+        return preference
 
-    if preference != "auto":
-        src = by_id.get(preference)
-        return preference if src and src.events else None
-
-    for iid in _SOURCE_PRIORITY:
-        src = by_id.get(iid)
-        if src and src.events:
-            return iid
+    for fallback in ("arp_synth", "melody", "chord_stab"):
+        if fallback != preference:
+            src = by_id.get(fallback)
+            if src and src.events:
+                return fallback
     return None
 
 

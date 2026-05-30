@@ -231,12 +231,57 @@ def _pick_alternate_program(
     return options[(generation_seed // (41 + salt)) % len(options)]
 
 
+def _separate_lead_programs(
+    by_id: dict[str, InstrumentAssignment],
+    a: str,
+    b: str,
+    *,
+    generation_seed: int,
+    prefer_alt_on: str,
+) -> None:
+    """Dos capas lead activas no comparten gm_program."""
+    left = by_id.get(a)
+    right = by_id.get(b)
+    if not left or not right or not left.active or not right.active:
+        return
+    if left.gm_program != right.gm_program:
+        return
+    avoid = {left.gm_program}
+    alt = _pick_alternate_program(prefer_alt_on, avoid, generation_seed + hash((a, b)))
+    if alt is None:
+        other = b if prefer_alt_on == a else a
+        alt = _pick_alternate_program(other, avoid, generation_seed + hash((b, a)))
+        if alt is None:
+            return
+        prog, name = resolve_timbre(other, alt, generation_seed=generation_seed)
+        by_id[other] = by_id[other].model_copy(update={"gm_program": prog, "display_name": name})
+        return
+    prog, name = resolve_timbre(prefer_alt_on, alt, generation_seed=generation_seed)
+    by_id[prefer_alt_on] = by_id[prefer_alt_on].model_copy(update={"gm_program": prog, "display_name": name})
+
+
 def _separate_melody_chord_stab_programs(
     by_id: dict[str, InstrumentAssignment],
     *,
     generation_seed: int,
 ) -> None:
     """melody y chord_stab activos no pueden compartir gm_program."""
+    _separate_lead_programs(
+        by_id, "melody", "chord_stab",
+        generation_seed=generation_seed, prefer_alt_on="chord_stab",
+    )
+
+
+def _separate_melody_countermelody_programs(
+    by_id: dict[str, InstrumentAssignment],
+    *,
+    generation_seed: int,
+) -> None:
+    """melody y countermelody activos no pueden compartir gm_program."""
+    _separate_lead_programs(
+        by_id, "melody", "countermelody",
+        generation_seed=generation_seed, prefer_alt_on="countermelody",
+    )
     mel = by_id.get("melody")
     stab = by_id.get("chord_stab")
     if not mel or not stab or not mel.active or not stab.active:
@@ -352,6 +397,18 @@ def validate_orchestration(
         for iid in to_remove:
             del by_id[iid]
 
+    from cadence.music.harmonic_coherence import apply_lead_support_cap
+
+    allowed_ids = apply_lead_support_cap(
+        set(by_id.keys()),
+        energy_level=energy_level,
+        use_case=use_case,
+        protected=protected,
+    )
+    for iid in list(by_id.keys()):
+        if iid not in CORE_INSTRUMENTS and iid not in allowed_ids:
+            del by_id[iid]
+
     lead_present = [iid for iid in LEAD_OPTIONALS if iid in by_id]
     if len(lead_present) > max_lead:
         for iid in ("fx_riser", "perc_aux", "synth_pluck", "chord_stab", "echo_synth", "countermelody", "arp_synth"):
@@ -369,6 +426,10 @@ def validate_orchestration(
         generation_seed=generation_seed,
     )
     _separate_melody_chord_stab_programs(
+        by_id,
+        generation_seed=generation_seed,
+    )
+    _separate_melody_countermelody_programs(
         by_id,
         generation_seed=generation_seed,
     )

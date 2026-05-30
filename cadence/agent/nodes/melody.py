@@ -212,6 +212,27 @@ def compose_melody_track(state: SongState) -> Track:
 
     dev_block = _development_hint(state)
 
+    harmonic_stack_hint = ""
+    plan = state.get("orchestration_plan")
+    if plan and proposal:
+        from cadence.music.harmonic_coherence import (
+            active_instrument_ids_from_plan,
+            count_harmonic_support_layers,
+            should_quantize_melody_to_chords,
+        )
+        active = active_instrument_ids_from_plan(plan)
+        if should_quantize_melody_to_chords(
+            count_harmonic_support_layers(active),
+            proposal.energy_level,
+            intent.use_case,
+        ):
+            harmonic_stack_hint = (
+                "\nStack armónico denso (arp/contramelodía/pluck): "
+                "usa SOLO scale_degree que pertenezcan al acorde indicado "
+                "para cada sección (grados del plan armónico). "
+                "Evita notas fuera del acorde en drops y climax.\n"
+            )
+
     # phrase length hints per section
     phrase_hints = []
     for section_id in structure.sections:
@@ -236,7 +257,7 @@ def compose_melody_track(state: SongState) -> Track:
         "- Respuesta: desciende o resuelve a tónica/grado 0\n"
         "- Drop/climax: notas cortas (1-2 steps), denso, pocos silencios\n"
         "- Breakdown: silencios permitidos pero no más del 30%\n"
-        f"{harmony_block}{dev_block}{narrative_block}"
+        f"{harmony_block}{dev_block}{narrative_block}{harmonic_stack_hint}"
         f"Longitud sugerida:\n" + "\n".join(phrase_hints) + "\n"
         f"{variety_hint}\n"
         "Responde SOLO con el objeto estructurado."

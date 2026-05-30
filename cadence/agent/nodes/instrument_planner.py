@@ -19,6 +19,10 @@ from cadence.music.instrument_patterns import (
     STAB_PATTERN_POOL,
     format_layer_patterns_for_llm,
 )
+from cadence.music.harmonic_coherence import (
+    active_instrument_ids_from_plan,
+    resolve_echo_source_for_stack,
+)
 from cadence.music.repertoire_signals import resolve_harmony_pool_choice
 from cadence.music.strategy_pools import ECHO_SOURCE_POOL
 from cadence.music.strategy_pools import (
@@ -73,6 +77,14 @@ def _apply_plan_to_strategies(
         updates["counter_pattern"] = plan.counter_pattern
     if plan.echo_source in ECHO_SOURCE_POOL:
         updates["echo_source"] = plan.echo_source
+
+    active_ids = active_instrument_ids_from_plan(plan)
+    updates["echo_source"] = resolve_echo_source_for_stack(
+        base.model_copy(update=updates),
+        active_ids,
+        energy_level=energy_level,
+        use_case=use_case,
+    )
     return base.model_copy(update=updates)
 
 

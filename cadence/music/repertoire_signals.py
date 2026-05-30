@@ -303,30 +303,13 @@ def resolve_harmony_pool_choice(
     energy_level: int,
     use_case: str,
 ) -> str:
-    """Elige pool con mayor afinidad a energía/rol (strategies vs plan del agente)."""
-    from cadence.music.strategy_pools import HARMONY_POOL, resolve_harmony_pool
+    """Elige pool con afinidad a energía/rol; en stacks intensos evita pools planos del agente."""
+    from cadence.music.harmonic_coherence import harmony_pool_for_dense_stack
 
-    priority = harmony_pool_priority(energy_level, use_case)
-
-    def score(pool: str | None) -> int:
-        if not pool or pool not in HARMONY_POOL:
-            return -1
-        try:
-            return len(priority) - priority.index(pool)
-        except ValueError:
-            return 0
-
-    plan_score = score(plan_pool)
-    strat_score = score(strategies_pool)
-    if plan_pool in HARMONY_POOL and strategies_pool in HARMONY_POOL:
-        if strat_score > plan_score:
-            return strategies_pool
-        return plan_pool
-    if strategies_pool in HARMONY_POOL:
-        return strategies_pool
-    if plan_pool in HARMONY_POOL:
-        return plan_pool
-    return resolve_harmony_pool(strategies_pool or plan_pool, 0)
+    return harmony_pool_for_dense_stack(
+        plan_pool, strategies_pool,
+        energy_level=energy_level, use_case=use_case,
+    )
 
 
 def max_optional_budget(use_case: str, energy_level: int) -> tuple[int, int]:
