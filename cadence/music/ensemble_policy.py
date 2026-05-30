@@ -73,8 +73,15 @@ def ensemble_score(
     genre_mix: dict[str, float] | None = None,
 ) -> float:
     """0–1: conveniencia de activar familias ensemble."""
+    from cadence.music.composition_archetypes import (
+        matches_archetype,
+        normalize_archetype,
+        policy_family,
+    )
+
     tags = _tags_lower(genre_tags)
-    arch = (composition_archetype or "").lower()
+    arch = normalize_archetype(composition_archetype) if composition_archetype else ""
+    fam = policy_family(arch) if arch else "default"
     uc = (use_case or "game").lower()
 
     score = 0.0
@@ -82,11 +89,11 @@ def ensemble_score(
     folk = _tag_overlap(tags, FOLK_JAZZ_TAG_TOKENS)
     dance = _tag_overlap(tags, DANCE_ELECTRONIC_TAGS)
 
-    if arch in ("orchestral_boss", "cinematic_cutscene"):
+    if fam in ("orchestral",) or matches_archetype(arch, "moderate_cinematic"):
         score += 0.55
-    if arch == "ambient_loop" and energy_level >= 3:
+    if matches_archetype(arch, "sparse_loop") and energy_level >= 3:
         score += 0.35
-    if arch == "chiptune_dance" and orch >= 0.2:
+    if matches_archetype(arch, "dense_dance") and orch >= 0.2:
         score += 0.4  # híbrido chiptune + orquesta
 
     score += orch * 0.45 + folk * 0.3

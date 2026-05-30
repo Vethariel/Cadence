@@ -30,10 +30,6 @@ from cadence.schemas.song_state import (
 )
 
 _TEXTURE_MODES = frozenset({"bedded", "staggered", "simultaneous", "compact"})
-_ARCHETYPES = frozenset({
-    "ambient_loop", "cinematic_cutscene", "chiptune_dance",
-    "compact_action", "orchestral_boss", "default_game",
-})
 _AGENT_DRUM = frozenset({
     "techno", "dubstep", "house", "breakbeat", "halftime", "dnb", "industrial", "default",
 })
@@ -109,8 +105,12 @@ def snap_texture_mode(raw: str | None) -> str:
 
 
 def snap_archetype(raw: str) -> str:
+    from cadence.music.composition_archetypes import is_valid_archetype, normalize_archetype
+
     key = (raw or "").strip().lower()
-    return key if key in _ARCHETYPES else ""
+    if is_valid_archetype(key):
+        return normalize_archetype(key)
+    return ""
 
 
 def snap_scale_mode(raw: str | None) -> str:
@@ -145,6 +145,8 @@ def normalize_global_motif(degrees: list[int]) -> list[int]:
 
 def format_composition_patterns_for_llm() -> str:
     """Catálogo de patrones para que technical_spec fije la composición rítmica/armónica."""
+    from cadence.music.composition_archetypes import format_archetypes_for_llm
+
     lines = [
         "=== PATRONES DE COMPOSICIÓN (technical_spec — elige ids EXACTOS) ===",
         "Rellena drum_pattern, bass_pattern, harmony_pool y capas opcionales si las activas.",
@@ -163,8 +165,7 @@ def format_composition_patterns_for_llm() -> str:
         f"  echo_source: {', '.join(ECHO_SOURCE_POOL)}",
         "",
         "texture_mode: bedded | staggered | simultaneous | compact",
-        "composition_archetype (opcional): ambient_loop | cinematic_cutscene | chiptune_dance | "
-        "compact_action | orchestral_boss | default_game",
+        f"composition_archetype (opcional): {format_archetypes_for_llm()}",
         "global_motif (opcional): 3–5 enteros 0–6 (grados de escala del motivo principal).",
     ]
     return "\n".join(lines)

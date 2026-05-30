@@ -577,6 +577,9 @@ def arrangement_planner_node(state: SongState) -> dict:
         percussion_suppressed=suppress_drums,
         composition_archetype=archetype,
     )
+    from cadence.music.layer_schedule import sync_schedule_with_layer_specs
+
+    schedule = sync_schedule_with_layer_specs(structure, layers, schedule)
 
     arrangement = ArrangementPlan(
         layers=layers,

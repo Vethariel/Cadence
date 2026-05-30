@@ -36,7 +36,7 @@ def _compose_chord_stab(ctx: ComposeContext) -> Track | None:
         intent = intent_map.get(section)
         density = intent.density if intent else 0.5
 
-        if section not in active or density < 0.45:
+        if section not in active or density < ctx.layer.min_density:
             current_t += bars * steps_per_bar * step_ms
             beat_index += bars * steps_per_bar
             continue

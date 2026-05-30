@@ -77,7 +77,7 @@ def test_get_composition_archetype_cached():
     from cadence.music.style_archetype import get_composition_archetype
 
     state = {"composition_archetype": "chiptune_dance"}
-    assert get_composition_archetype(state) == "chiptune_dance"
+    assert get_composition_archetype(state) == "dense_dance"
 
 
 def test_clamp_optional_layers():

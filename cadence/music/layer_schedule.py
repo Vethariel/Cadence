@@ -369,6 +369,74 @@ def schedule_core_list() -> list[str]:
     return list(CORE_LAYERS)
 
 
+def _schedule_add_bars(schedule: LayerSchedule) -> dict[str, set[int]]:
+    """Compases globales donde cada capa opcional recibe un add."""
+    by_id: dict[str, set[int]] = defaultdict(set)
+    for entry in schedule.entries:
+        for lid in entry.add:
+            by_id[lid].add(entry.bar)
+    return by_id
+
+
+def sync_schedule_with_layer_specs(
+    structure: SongStructure,
+    layers: list,
+    schedule: LayerSchedule,
+) -> LayerSchedule:
+    """
+    Alinea entradas del schedule con secciones explícitas del arrangement.
+
+    Evita que capas planificadas (chord_stab, synth_pluck…) se filtren a cero
+    cuando los umbrales dinámicos del schedule no las activan pero el planner
+    sí las asignó a secciones concretas.
+    """
+    from cadence.schemas.song_state import LayerScheduleEntry
+
+    available = {layer.instrument_id for layer in layers}
+    starts = section_start_bars(structure)
+    scheduled_adds = _schedule_add_bars(schedule)
+
+    pending: list[tuple[int, str, str]] = []
+    for layer in layers:
+        iid = layer.instrument_id
+        if iid in schedule.core_layers or iid not in SCHEDULED_OPTIONAL:
+            continue
+        sections = layer.active_sections
+        if sections == ["*"]:
+            continue
+        for section_id in sections:
+            if section_id not in starts:
+                continue
+            stagger = LAYER_STAGGER.get(iid, 0)
+            bars = structure.bars_per_section.get(section_id, 4)
+            entry_bar = min(starts[section_id] + stagger, starts[section_id] + max(bars - 1, 0))
+            if entry_bar in scheduled_adds.get(iid, set()):
+                continue
+            pending.append((entry_bar, "add", iid))
+            scheduled_adds.setdefault(iid, set()).add(entry_bar)
+
+    if not pending:
+        return schedule
+
+    by_bar: dict[int, dict[str, list[str]]] = defaultdict(lambda: {"add": [], "remove": []})
+    for entry in schedule.entries:
+        by_bar[entry.bar]["add"].extend(entry.add)
+        by_bar[entry.bar]["remove"].extend(entry.remove)
+    for bar, action, lid in sorted(pending, key=lambda x: (x[0], x[2])):
+        if action == "add" and lid not in by_bar[bar]["add"]:
+            by_bar[bar]["add"].append(lid)
+
+    entries = [
+        LayerScheduleEntry(bar=bar, add=ops["add"], remove=ops["remove"])
+        for bar, ops in sorted(by_bar.items())
+        if ops["add"] or ops["remove"]
+    ]
+    return LayerSchedule(
+        entries=entries,
+        core_layers=list(schedule.core_layers),
+    )
+
+
 def filter_events_by_schedule(
     events: list,
     instrument_id: str,

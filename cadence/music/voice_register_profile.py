@@ -236,18 +236,33 @@ def _base_from_archetype(
     use_case: str,
     melody_texture: str,
 ) -> tuple[LeadDensityTier, LeadArticulation, BassGridTier]:
-    arch = archetype or "default_game"
+    from cadence.music.composition_archetypes import normalize_archetype, policy_family
+
+    arch = normalize_archetype(archetype)
+    fam = policy_family(arch)
     uc = (use_case or "game").lower()
     tex = melody_texture or "balanced"
 
-    if arch == "chiptune_dance":
-        return "hyper", "staccato", "sixteenth"
-    if arch == "compact_action":
-        return "dense", "mixed", "eighth"
-    if arch in ("ambient_loop", "cinematic_cutscene"):
+    if arch == "lofi_downtempo":
+        return "sparse", "legato", "half"
+    if arch == "stealth_tension":
+        return "sparse", "legato", "half"
+    if arch == "menu_theme":
         tier: LeadDensityTier = "sparse" if energy_level <= 2 else "moderate"
+        return tier, "legato", "quarter"
+    if fam == "dense":
+        return "hyper", "staccato", "sixteenth"
+    if fam in ("compact", "energetic"):
+        return "dense", "mixed", "eighth"
+    if fam == "sparse":
+        tier = "sparse" if energy_level <= 2 else "moderate"
         return tier, "legato", "half"
-    if arch == "orchestral_boss":
+    if fam == "cinematic":
+        tier = "sparse" if energy_level <= 2 else "moderate"
+        return tier, "legato", "half"
+    if arch == "hybrid_epic":
+        return "moderate", "mixed", "eighth"
+    if fam == "orchestral":
         return "moderate", "legato", "quarter"
 
     if tex == "sparse":
@@ -276,8 +291,10 @@ def _apply_texture_mode(
     allow_fill: bool,
     quantize: bool,
 ) -> tuple[LeadDensityTier, LeadArticulation, BassGridTier, bool, bool, bool]:
+    from cadence.music.composition_archetypes import policy_family
+
     mode = texture_mode or "staggered"
-    if composition_archetype == "chiptune_dance":
+    if policy_family(composition_archetype) == "dense":
         return tier, art, bass, allow_densify, allow_fill, quantize
     if mode == "bedded":
         tier = _cap_tier(tier, "moderate")
@@ -335,7 +352,9 @@ def resolve_voice_register_profile(
     narrative_sections: dict[str, SectionIntent] | None = None,
     genre_mix: dict[str, float] | None = None,
 ) -> VoiceRegisterProfile:
-    arch = composition_archetype or "default_game"
+    from cadence.music.composition_archetypes import normalize_archetype, policy_family
+
+    arch = normalize_archetype(composition_archetype or "default_game")
     tier, art, bass = _base_from_archetype(arch, energy_level, use_case, melody_texture)
 
     if genre_mix:
@@ -356,8 +375,8 @@ def resolve_voice_register_profile(
         tier = _cap_tier(tier, "sparse")
         art = _cap_art(art, "legato")
         bass = _cap_bass(bass, "half")
-    elif melody_texture in ("dense", "percussive") and arch not in (
-        "orchestral_boss", "cinematic_cutscene", "ambient_loop",
+    elif melody_texture in ("dense", "percussive") and policy_family(arch) not in (
+        "orchestral", "cinematic", "sparse",
     ):
         if tier == "moderate":
             tier = "dense"

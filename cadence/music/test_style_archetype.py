@@ -27,7 +27,7 @@ def test_chiptune_from_genres():
         use_case="game",
         energy_level=5,
     )
-    assert arch == "chiptune_dance"
+    assert arch == "dense_dance"
 
 
 def test_orchestral_boss():
@@ -53,7 +53,7 @@ def test_precedence_compact_platform_over_orchestral_tags():
         use_case=bp.expected_use_case,
         energy_level=4,
     )
-    assert decision.archetype == "compact_action"
+    assert decision.archetype == "energetic_game"
     assert "precedence_matrix" in decision.reason or "compact" in decision.reason
 
 
@@ -70,7 +70,7 @@ def test_reconcile_llm_orchestral_overridden_by_compact_prompt():
         use_case="game",
         energy_level=4,
     )
-    assert decision.archetype == "compact_action"
+    assert decision.archetype == "energetic_game"
     assert "guardrail" in decision.reason or "precedence" in decision.reason
 
 
@@ -80,7 +80,7 @@ def test_archetype_reason_exported():
         use_case="loop",
         energy_level=1,
     )
-    assert decision.archetype == "ambient_loop"
+    assert decision.archetype == "sparse_loop"
     assert decision.reason
 
 
@@ -101,7 +101,41 @@ def test_explicit_no_drums_suppresses():
     ) is True
 
 
+def test_lofi_downtempo_from_prompt():
+    arch = infer_composition_archetype(
+        style_profile=MusicalStyleProfile(genres=["lofi", "chillhop"]),
+        raw_prompt="música lofi instrumental relajada",
+        use_case="loop",
+        energy_level=2,
+    )
+    assert arch == "lofi_downtempo"
+
+
+def test_industrial_combat_from_prompt():
+    arch = infer_composition_archetype(
+        style_profile=MusicalStyleProfile(genres=["industrial", "techno"]),
+        raw_prompt="combate cyberpunk frenético drum and bass",
+        use_case="game",
+        energy_level=5,
+    )
+    assert arch == "industrial_combat"
+
+
+def test_benchmark_energetic_game_archetype():
+    bp = next(p for p in load_benchmark_prompts() if p.id == "energetic_game")
+    arch = infer_composition_archetype(
+        style_profile=MusicalStyleProfile(
+            genres=["boss fight", "combat", "platformer"],
+        ),
+        raw_prompt=bp.prompt,
+        use_case=bp.expected_use_case,
+        energy_level=4,
+    )
+    assert arch == "energetic_game"
+
+
 def test_melody_texture_chiptune_dense():
+    assert melody_texture_for_archetype("dense_dance", 5, "game") == "dense"
     assert melody_texture_for_archetype("chiptune_dance", 5, "game") == "dense"
 
 
@@ -114,5 +148,8 @@ if __name__ == "__main__":
     test_archetype_reason_exported()
     test_drum_machines_avoid_does_not_suppress_drums()
     test_explicit_no_drums_suppresses()
+    test_lofi_downtempo_from_prompt()
+    test_industrial_combat_from_prompt()
+    test_benchmark_energetic_game_archetype()
     test_melody_texture_chiptune_dense()
     print("All style_archetype tests passed.")

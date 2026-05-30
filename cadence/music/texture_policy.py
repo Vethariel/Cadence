@@ -30,21 +30,24 @@ def infer_texture_mode(
     active_optional_count: int = 0,
     composition_archetype: str | None = None,
 ) -> TextureMode:
+    from cadence.music.composition_archetypes import normalize_archetype, policy_family
+
     uc = (use_case or "game").lower()
-    arch = composition_archetype or ""
+    arch = normalize_archetype(composition_archetype)
+    fam = policy_family(arch)
     roles = []
     max_density = 0.0
     if narrative_sections:
         roles = [s.narrative_role for s in narrative_sections.values()]
         max_density = max((s.density for s in narrative_sections.values()), default=0.5)
 
-    if arch in ("ambient_loop", "cinematic_cutscene"):
+    if fam in ("sparse", "cinematic"):
         return "bedded"
-    if arch == "compact_action":
+    if fam in ("compact", "energetic"):
         return "compact"
-    if arch == "chiptune_dance" and energy_level >= 4:
+    if fam == "dense" and energy_level >= 4:
         return "simultaneous"
-    if arch == "orchestral_boss" and energy_level >= 4:
+    if fam == "orchestral" and energy_level >= 4:
         from cadence.music.orchestral_stack_policy import effective_texture_mode_for_schedule
 
         return effective_texture_mode_for_schedule(

@@ -236,6 +236,37 @@ def test_apply_orchestration_gm():
     print("✓ test_apply_orchestration_gm OK")
 
 
+def test_orchestral_boss_trims_non_lead_optionals_without_error():
+    """Regresión: recortar fx_riser/perc_aux no debe fallar en lead_present.remove."""
+    plan = _plan(
+        instruments=[
+            InstrumentAssignment(instrument_id="drums", gm_program=0, active=True),
+            InstrumentAssignment(instrument_id="bass", gm_program=43, active=True),
+            InstrumentAssignment(instrument_id="melody", gm_program=40, active=True),
+            InstrumentAssignment(instrument_id="countermelody", gm_program=52, active=True),
+            InstrumentAssignment(instrument_id="echo_synth", gm_program=50, active=True),
+            InstrumentAssignment(instrument_id="arp_synth", gm_program=46, active=True),
+            InstrumentAssignment(instrument_id="chord_stab", gm_program=55, active=True),
+            InstrumentAssignment(instrument_id="synth_pluck", gm_program=73, active=True),
+            InstrumentAssignment(instrument_id="perc_aux", gm_program=117, active=True),
+            InstrumentAssignment(instrument_id="fx_riser", gm_program=119, active=True),
+            InstrumentAssignment(instrument_id="pad", gm_program=48, active=True),
+        ],
+    )
+    validated = validate_orchestration(
+        plan,
+        use_case="game",
+        energy_level=5,
+        generation_seed=42,
+        composition_archetype="orchestral_boss",
+        genre_tags=["orchestral", "cinematic", "epic", "boss fight"],
+    )
+    by_id = {a.instrument_id: a for a in validated.instruments}
+    assert "melody" in by_id
+    assert "fx_riser" not in by_id or "perc_aux" not in by_id
+    print("✓ test_orchestral_boss_trims_non_lead_optionals_without_error OK")
+
+
 def test_melody_chord_stab_cannot_share_gm_program():
     plan = _plan(
         instruments=[
@@ -361,12 +392,33 @@ def test_ensure_core_assignments_applies_archetype_palette():
         "mood": "",
         "use_case": "game",
         "composition_archetype": "orchestral_boss",
+        "raw_prompt": "",
     }
     ensure_core_assignments(by_id, generation_seed=42, timbre_context=ctx)
     assert by_id["melody"].gm_program != 0
     assert by_id["melody"].display_name != "Melody"
     assert by_id["bass"].display_name != "Bass Synth"
     print("✓ test_ensure_core_assignments_applies_archetype_palette OK")
+
+
+def test_lofi_prompt_guitar_piano_hints():
+    from cadence.music.instrument_catalog import apply_prompt_technical_constraints
+    from cadence.schemas.song_state import InstrumentAssignment
+
+    by_id: dict[str, InstrumentAssignment] = {
+        "melody": InstrumentAssignment(
+            instrument_id="melody", role="lead", gm_program=7,
+            display_name="Clavinet", mix_level=-8.0, active=True,
+        ),
+    }
+    apply_prompt_technical_constraints(
+        by_id,
+        raw_prompt="musica lofi instrumental con guitarra y piano",
+    )
+    assert by_id["melody"].gm_program in range(24, 31), "melody debe ser guitarra"
+    assert "chord_stab" in by_id
+    assert by_id["chord_stab"].gm_program in {0, 1, 2, 3, 4, 5}
+    print("✓ test_lofi_prompt_guitar_piano_hints OK")
 
 
 if __name__ == "__main__":
@@ -381,10 +433,12 @@ if __name__ == "__main__":
     test_resolve_rhythm_patterns_fallback_by_genre()
     test_arrangement_from_orchestration_plan()
     test_apply_orchestration_gm()
+    test_orchestral_boss_trims_non_lead_optionals_without_error()
     test_melody_chord_stab_cannot_share_gm_program()
     test_melody_echo_synth_cannot_share_gm_program()
     test_melody_countermelody_cannot_share_gm_program()
     test_style_profile_avoids_incoherent_timbres()
     test_style_profile_no_avoid_keeps_programs()
     test_ensure_core_assignments_applies_archetype_palette()
+    test_lofi_prompt_guitar_piano_hints()
     print("\nAll instrument planner tests passed.")
