@@ -12,6 +12,7 @@ export default defineConfig({
       '/generate': 'http://localhost:8000',
       '/health': 'http://localhost:8000',
       '/productions': 'http://localhost:8000',
+      '/benchmark-prompts': 'http://localhost:8000',
     }
   }
 })

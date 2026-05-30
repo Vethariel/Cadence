@@ -77,6 +77,17 @@ def test_echo_source_arp_when_dense_stack():
     assert src == "arp_synth"
 
 
+def test_echo_explicit_melody_overridden_when_arp_stack():
+    active = {"arp_synth", "countermelody", "melody", "pad"}
+    src = resolve_echo_source_for_stack(
+        GenerationStrategies(generation_seed=1, echo_source="melody"),
+        active,
+        energy_level=5,
+        use_case="game",
+    )
+    assert src == "arp_synth"
+
+
 def test_lead_cap_keeps_arp_and_counter():
     active = {
         "melody", "arp_synth", "countermelody", "synth_pluck", "chord_stab", "echo_synth",

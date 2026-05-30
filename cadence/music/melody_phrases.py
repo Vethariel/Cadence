@@ -1,6 +1,7 @@
 """Utilidades de fraseo melódico — frases 2-4 compases y desarrollo motivico."""
 
 from cadence.schemas.song_state import RhythmEvent, SectionDevelopment
+from cadence.music.development_theory import development_for_bar
 
 
 class MelodyNoteInputs:
@@ -144,6 +145,7 @@ def phrases_to_events(
         return events, current_t + total_bars * 16 * step_ms, beat_index + total_bars * 16
 
     while bar_idx < total_bars:
+        bar_dev = development_for_bar(development, bar_idx) if development else None
         for phrase_idx, phrase in enumerate(phrases):
             if bar_idx >= total_bars:
                 break
@@ -151,10 +153,10 @@ def phrases_to_events(
             total_steps = phrase_bars * 16
             pattern = fix_phrase_steps(phrase.pattern, total_steps)
 
-            if development:
-                pattern = apply_development_to_notes(pattern, development, cycle_idx, phrase_idx)
-                if development.motif_variant:
-                    pattern = apply_motif_bias(pattern, development.motif_variant, 0.4)
+            if bar_dev:
+                pattern = apply_development_to_notes(pattern, bar_dev, cycle_idx, phrase_idx)
+                if bar_dev.motif_variant:
+                    pattern = apply_motif_bias(pattern, bar_dev.motif_variant, 0.4)
 
             for note in pattern:
                 duration_ms = int(note.duration_steps * step_ms * 0.92)

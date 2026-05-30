@@ -25,7 +25,14 @@ def test_infer_dense_battle():
         use_case="game", energy_level=5, title="cadence_game_aggressive",
         genre_tags=["techno", "dubstep"],
     ) == "energetic_game"
-    assert infer_archetype(use_case="game", energy_level=5, title="cadence_party_dance") == "dense_dance"
+    assert infer_archetype(
+        use_case="game", energy_level=5, title="cadence_dense_dance",
+        genre_tags=["chiptune", "arcade", "eurobeat"],
+    ) == "dense_dance"
+    assert infer_archetype(
+        use_case="game", energy_level=5, title="cadence_energetic_game",
+        genre_tags=["boss fight", "combat", "platform"],
+    ) == "energetic_game"
     print("✓ test_infer_dense_battle OK")
 
 
@@ -34,9 +41,9 @@ def test_energetic_game_profile_exists():
     profiles = build_style_profiles(metrics)
     assert "energetic_game" in profiles
     eg = profiles["energetic_game"]
-    assert "Energetic - good sound.mid" in eg.references
-    if "Energetic - good sound.mid" in metrics:
-        assert eg.ranges.get("layers_active_mean")
+    measured = [r for r in eg.references if r in metrics]
+    assert measured, "energetic_game necesita al menos una referencia medida"
+    assert eg.ranges.get("layers_active_mean")
     print("✓ test_energetic_game_profile_exists OK")
 
 
@@ -67,13 +74,13 @@ def test_instrumental_richness_score():
     metrics = _ref_metrics()
     profiles = build_style_profiles(metrics)
     asgore = metrics["ASGORE.mid"]
-    pizza = metrics["Its_Pizza_Time.mid"]
+    sweden = metrics["Sweden_-_Minecraft.mid"]
     r_boss = compute_instrumental_richness(asgore, profiles["boss_orchestral"])
-    r_sparse = compute_instrumental_richness(pizza, profiles["sparse_loop"])
+    r_sparse = compute_instrumental_richness(sweden, profiles["sparse_loop"])
     assert r_boss.score > r_sparse.score, (
-        f"ASGORE ({r_boss.score}) debería ser más rico que Pizza Time ({r_sparse.score})"
+        f"ASGORE ({r_boss.score}) debería ser más rico que Sweden ({r_sparse.score})"
     )
-    print(f"  riqueza ASGORE={r_boss.score:.0f}  Pizza={r_sparse.score:.0f}")
+    print(f"  riqueza ASGORE={r_boss.score:.0f}  Sweden={r_sparse.score:.0f}")
     print("✓ test_instrumental_richness_score OK")
 
 

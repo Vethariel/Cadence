@@ -229,8 +229,24 @@ class ArrangementPlan(BaseModel):
         description="Capas obligatorias para pasar validación.",
     )
 
+class DevelopmentSegment(BaseModel):
+    """Subdivisión dentro de una sección — variación de carga emocional en el tiempo."""
+    start_bar: int = Field(ge=0, description="Compás relativo al inicio de la sección (0-based).")
+    end_bar: int = Field(ge=1, description="Compás exclusivo donde termina el segmento.")
+    transform: Literal[
+        "introduce", "sequence_up", "sequence_down", "invert",
+        "fragment", "expand", "climax", "resolve", "sparse",
+        "ostinato", "augment", "call_response", "pedal",
+    ]
+    phrase_length_bars: int = Field(ge=2, le=4, default=2)
+    contour: Literal[
+        "ascending", "descending", "arch", "zigzag", "wave", "saw", "static",
+    ] = "arch"
+    motif_variant: list[int] = Field(default_factory=list)
+
+
 class SectionDevelopment(BaseModel):
-    """Cómo evoluciona el motivo en una sección."""
+    """Cómo evoluciona el motivo en una sección (resumen + subdivisiones opcionales)."""
     section_id: str
     transform: Literal[
         "introduce", "sequence_up", "sequence_down", "invert",
@@ -244,6 +260,10 @@ class SectionDevelopment(BaseModel):
     motif_variant: list[int] = Field(
         default_factory=list,
         description="Motivo transformado (grados 0-6) para esta sección.",
+    )
+    segments: list[DevelopmentSegment] = Field(
+        default_factory=list,
+        description="Micro-arcos dentro de la sección; vacío = un solo bloque.",
     )
 
 class DevelopmentPlan(BaseModel):

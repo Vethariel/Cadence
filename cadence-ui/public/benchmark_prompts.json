@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "description": "Copia de examples/benchmark_prompts.json — mantener sincronizado",
+  "prompts": [
+    {
+      "id": "sparse_loop",
+      "archetype": "sparse_loop",
+      "label": "Loop ambiente",
+      "midi_refs": [
+        "pokefrlg_lavender_town.mid",
+        "Sweden_-_Minecraft.mid",
+        "Its_Pizza_Time.mid"
+      ],
+      "prompt": "Loop de exploración overworld: ambiente calmado, pads y drones, melodía espaciada, poca percusión, música de fondo que se repite sin climax de combate."
+    },
+    {
+      "id": "moderate_cinematic",
+      "archetype": "moderate_cinematic",
+      "label": "Cutscene moderada",
+      "midi_refs": ["MILF.mid", "corridor.mid", "z5gerudo.mid"],
+      "prompt": "Cutscene narrativa moderada: tensión contenida, melodía clara sin fraseo de batalla denso, armonía que acompaña el diálogo, pasillo o región misteriosa, sin edm ni victoria arcade."
+    },
+    {
+      "id": "dense_dance",
+      "archetype": "dense_dance",
+      "label": "Battle dance denso",
+      "midi_refs": ["Bad Apple!!.mid", "UT_Spider_Dance_v2_Lu9.mid"],
+      "prompt": "Combate arcade o victoria: melodía muy densa y rápida, muchas notas por compás, saltos amplios, energía alta estilo chiptune o eurobeat, sin techno ni dubstep ni orquesta épica."
+    },
+    {
+      "id": "energetic_game",
+      "archetype": "energetic_game",
+      "label": "Boss compacto",
+      "midi_refs": ["Kraid.mid"],
+      "prompt": "Pelea de jefe en plataforma: orquestación compacta, pocos instrumentos a la vez, melodía urgente y directa, acción constante, sin chiptune ni eurobeat ni capas orquestales masivas."
+    },
+    {
+      "id": "boss_orchestral",
+      "archetype": "boss_orchestral",
+      "label": "Boss orquestal",
+      "midi_refs": ["ASGORE.mid", "UT_Spider_Dance_v2_Lu9.mid"],
+      "prompt": "Boss fight orquestal épico: muchas capas simultáneas, registro amplio, tensión cinemática, melodía protagonista con densidad moderada, estilo confrontación final sin edm."
+    }
+  ]
+}

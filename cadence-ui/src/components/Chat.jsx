@@ -3,11 +3,42 @@ import { useCadenceStore } from '../store'
 import { generateSong } from '../api'
 import { uid } from '../uid'
 
-const SUGGESTIONS = [
-  'canción agresiva para un boss fight techno dubstep',
-  'loop ambiental para un mapa de exploración espacial',
-  'tema energético para pantalla de victoria arcade',
-  'melodía oscura para cinemática de villano',
+const FALLBACK_SUGGESTIONS = [
+  {
+    id: 'sparse_loop',
+    label: 'Loop ambiente',
+    archetype: 'sparse_loop',
+    prompt:
+      'Loop de exploración overworld: ambiente calmado, pads y drones, melodía espaciada, poca percusión, música de fondo que se repite sin climax de combate.',
+  },
+  {
+    id: 'moderate_cinematic',
+    label: 'Cutscene moderada',
+    archetype: 'moderate_cinematic',
+    prompt:
+      'Cutscene narrativa moderada: tensión contenida, melodía clara sin fraseo de batalla denso, armonía que acompaña el diálogo, pasillo o región misteriosa, sin edm ni victoria arcade.',
+  },
+  {
+    id: 'dense_dance',
+    label: 'Battle dance denso',
+    archetype: 'dense_dance',
+    prompt:
+      'Combate arcade o victoria: melodía muy densa y rápida, muchas notas por compás, saltos amplios, energía alta estilo chiptune o eurobeat, sin techno ni dubstep ni orquesta épica.',
+  },
+  {
+    id: 'energetic_game',
+    label: 'Boss compacto',
+    archetype: 'energetic_game',
+    prompt:
+      'Pelea de jefe en plataforma: orquestación compacta, pocos instrumentos a la vez, melodía urgente y directa, acción constante, sin chiptune ni eurobeat ni capas orquestales masivas.',
+  },
+  {
+    id: 'boss_orchestral',
+    label: 'Boss orquestal',
+    archetype: 'boss_orchestral',
+    prompt:
+      'Boss fight orquestal épico: muchas capas simultáneas, registro amplio, tensión cinemática, melodía protagonista con densidad moderada, estilo confrontación final sin edm.',
+  },
 ]
 
 function Message({ msg }) {
@@ -84,10 +115,29 @@ function TypingIndicator() {
 
 export default function Chat({ onResult, onOpenProductions }) {
   const [input, setInput] = useState('')
+  const [suggestions, setSuggestions] = useState(FALLBACK_SUGGESTIONS)
   const { messages, isGenerating, addMessage, setGenerating, setResult } =
     useCadenceStore()
   const bottomRef = useRef(null)
   const inputRef  = useRef(null)
+
+  useEffect(() => {
+    fetch('/benchmark-prompts')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (data?.prompts?.length) {
+          setSuggestions(data.prompts)
+        }
+      })
+      .catch(() => {
+        fetch('/benchmark_prompts.json')
+          .then(r => (r.ok ? r.json() : null))
+          .then(data => {
+            if (data?.prompts?.length) setSuggestions(data.prompts)
+          })
+          .catch(() => {})
+      })
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -217,27 +267,36 @@ export default function Chat({ onResult, onOpenProductions }) {
           display: 'flex', flexWrap: 'wrap', gap: '6px',
           marginBottom: '12px',
         }}>
-          {SUGGESTIONS.map(s => (
-            <button key={s} onClick={() => handleSubmit(s)} style={{
-              background: 'var(--surface2)',
-              border: '1px solid var(--border)',
-              borderRadius: '2px',
-              padding: '5px 10px',
-              fontSize: '11px',
-              fontFamily: 'Space Mono, monospace',
-              color: 'var(--muted)',
-              cursor: 'pointer',
-              transition: 'border-color 0.2s, color 0.2s',
-            }}
-            onMouseEnter={e => {
-              e.target.style.borderColor = 'var(--accent2)'
-              e.target.style.color = 'var(--text)'
-            }}
-            onMouseLeave={e => {
-              e.target.style.borderColor = 'var(--border)'
-              e.target.style.color = 'var(--muted)'
-            }}>
-              {s}
+          {suggestions.map(s => (
+            <button
+              key={s.id || s.prompt}
+              title={s.prompt}
+              onClick={() => handleSubmit(s.prompt)}
+              style={{
+                background: 'var(--surface2)',
+                border: '1px solid var(--border)',
+                borderRadius: '2px',
+                padding: '5px 10px',
+                fontSize: '11px',
+                fontFamily: 'Space Mono, monospace',
+                color: 'var(--muted)',
+                cursor: 'pointer',
+                transition: 'border-color 0.2s, color 0.2s',
+                textAlign: 'left',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = 'var(--accent2)'
+                e.currentTarget.style.color = 'var(--text)'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = 'var(--border)'
+                e.currentTarget.style.color = 'var(--muted)'
+              }}
+            >
+              <span style={{ color: 'var(--accent3)', marginRight: '6px' }}>
+                {s.archetype}
+              </span>
+              {s.label || s.id}
             </button>
           ))}
         </div>

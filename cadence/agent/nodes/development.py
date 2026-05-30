@@ -18,6 +18,7 @@ def development_planner_node(state: SongState) -> dict:
 
     proposal = state.get("technical_proposal")
     energy = proposal.energy_level if proposal else 3
+    intent = state["intent"]
 
     development = build_development_plan(
         sections=structure.sections,
@@ -25,6 +26,8 @@ def development_planner_node(state: SongState) -> dict:
         narrative_sections=section_intent_map(narrative),
         generation_seed=seed,
         energy_level=energy,
+        bars_per_section=structure.bars_per_section,
+        use_case=intent.use_case,
     )
 
     return {"development": development}

@@ -50,7 +50,17 @@ def clamp_melody_register(events: list[RhythmEvent]) -> list[RhythmEvent]:
     ]
 
 
-def _max_leap_semitones(section: str, climax_sections: set[str], energy_level: int) -> int:
+def _max_leap_semitones(
+    section: str,
+    climax_sections: set[str],
+    energy_level: int,
+    use_case: str = "game",
+) -> int:
+    uc = (use_case or "game").lower()
+    if uc == "cutscene":
+        return MAX_LEAP_DEFAULT
+    if uc == "loop":
+        return 5
     if section in climax_sections:
         return MAX_LEAP_CLIMAX
     if energy_level >= 5:
@@ -65,6 +75,7 @@ def limit_melody_leaps(
     scale_pitches: list[int],
     climax_sections: set[str],
     energy_level: int = 3,
+    use_case: str = "game",
 ) -> list[RhythmEvent]:
     if len(events) < 2:
         return events
@@ -74,7 +85,9 @@ def limit_melody_leaps(
 
     for event in sorted_events[1:]:
         prev = result[-1]
-        max_leap = _max_leap_semitones(event.section, climax_sections, energy_level)
+        max_leap = _max_leap_semitones(
+            event.section, climax_sections, energy_level, use_case,
+        )
         delta = event.pitch - prev.pitch
         if abs(delta) <= max_leap:
             result.append(event)
@@ -275,7 +288,9 @@ def process_melody_events(
     if _should_fill_gaps(intent_map, use_case, melody_texture):
         events = fill_melody_gaps(events, bpm, scale_pitches, intent_map)
 
-    events = limit_melody_leaps(events, scale_pitches, climax_sections, energy_level)
+    events = limit_melody_leaps(
+        events, scale_pitches, climax_sections, energy_level, use_case,
+    )
     events = clamp_melody_register(events)
     return sorted(events, key=lambda e: e.t)
 

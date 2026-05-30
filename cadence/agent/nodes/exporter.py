@@ -11,6 +11,17 @@ from cadence.music.crescendo import narrative_intensity_curve
 
 # ── Helpers ───────────────────────────────────────────────────
 
+def _export_title(state: SongState) -> str:
+    from cadence.analysis.benchmark_examples import export_title_for_prompt
+
+    intent = state["intent"]
+    return export_title_for_prompt(
+        intent.raw_prompt,
+        intent.use_case,
+        intent.mood or "",
+    )
+
+
 def _compute_intensity_curve(state: SongState) -> list[float]:
     """Curva de intensidad por sección (narrativa o inferida desde drums)."""
     structure = state["structure"]
@@ -121,7 +132,7 @@ def _build_rsong(state: SongState) -> dict:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "header": {
             "id": str(uuid.uuid4()),
-            "title": f"cadence_{intent.use_case}_{intent.mood[:12].replace(' ', '_')}",
+            "title": _export_title(state),
             "bpm": bpm,
             "time_signature": time_signature,
             "key": f"{key} {mode}",

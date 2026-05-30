@@ -17,23 +17,27 @@ from pathlib import Path
 ARCHETYPE_DEFS: dict[str, dict] = {
     "sparse_loop": {
         "label": "Loop / ambiente",
-        "references": ["Its_Pizza_Time.mid"],
+        "references": [
+            "Its_Pizza_Time.mid",
+            "Sweden_-_Minecraft.mid",
+            "pokefrlg_lavender_town.mid",
+        ],
         "description": "Pocas capas sostenidas, melodía espaciada, armonía clara.",
     },
     "moderate_cinematic": {
         "label": "Cutscene / moderado",
-        "references": ["MILF.mid", "Its_Pizza_Time.mid"],
+        "references": ["MILF.mid", "corridor.mid", "z5gerudo.mid"],
         "description": "Densidad media, cambios de acorde frecuentes, registro contenido.",
     },
     "dense_dance": {
         "label": "Battle / dance denso",
-        "references": ["Bad Apple!!.mid", "UT_Spider_Dance_v2_Lu9.mid"],
+        "references": ["Bad Apple!!.mid", "UT_Spider_Dance_v2_Lu9.mid", "Kraid.mid"],
         "description": "Melodía muy densa, saltos amplios, capas medias-altas.",
     },
     "energetic_game": {
         "label": "Boss energético / game action",
-        "references": ["Energetic - good sound.mid"],
-        "description": "Stack compacto (~4 capas), arp y counter densos, saltos altos.",
+        "references": ["Kraid.mid", "corridor.mid"],
+        "description": "Stack compacto (~3 capas), melodía activa, saltos altos.",
     },
     "boss_orchestral": {
         "label": "Boss / orquestal",
@@ -219,6 +223,10 @@ def infer_archetype(
             return "boss_orchestral"
         if dance_tags or "techno" in title_l or "dubstep" in title_l:
             return "energetic_game"
+        # Boss de acción compacta (refs Kraid/corridor) — sin chiptune/arcade ni edm
+        arcade_tags = tags & {"chiptune", "arcade", "eurobeat", "victory", "upbeat"}
+        if uc == "game" and not arcade_tags:
+            return "energetic_game"
         return "dense_dance"
 
     if energy >= 5 and (tags & {"orchestral", "cinematic", "epic"} or any(w in title_l for w in boss_words)):
@@ -257,11 +265,11 @@ def infer_archetype_from_path(path: Path) -> str:
             title=meta.get("title", path.stem),
         )
     name = path.stem.lower()
-    if "pizza" in name:
+    if any(w in name for w in ("pizza", "sweden", "lavender", "minecraft")):
         return "sparse_loop"
-    if "milf" in name:
+    if any(w in name for w in ("milf", "corridor", "gerudo")):
         return "moderate_cinematic"
-    if "energetic" in name:
+    if "energetic" in name or "kraid" in name:
         return "energetic_game"
     if "spider" in name or "bad apple" in name:
         return "dense_dance"

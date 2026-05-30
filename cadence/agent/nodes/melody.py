@@ -99,20 +99,24 @@ def _fix_section_phrases(phrases: list[MelodyPhrase]) -> list[MelodyPhrase]:
 
 
 def _development_hint(state: SongState) -> str:
+    from cadence.music.development_theory import format_section_development_hint
+
     development = state.get("development")
+    structure = state.get("structure")
     if not development:
         return ""
-    lines = ["Plan de desarrollo motivico:"]
+    bars_map = structure.bars_per_section if structure else {}
+    lines = [
+        "Plan de desarrollo motivico (subdivisiones = micro-arcos dentro de la sección):",
+    ]
     for dev in development.sections:
-        motif = ", ".join(str(d) for d in dev.motif_variant)
-        lines.append(
-            f"  - {dev.section_id}: transform={dev.transform}, "
-            f"contour={dev.contour}, phrase_bars={dev.phrase_length_bars}, "
-            f"motif=[{motif}]"
-        )
+        lines.append(format_section_development_hint(
+            dev, bars_map.get(dev.section_id, 4),
+        ))
     lines.append(
-        "Frase 1 debe presentar el motivo; frase 2 debe contrastar "
-        "(registro, ritmo o contorno). Evita repetir la misma frase."
+        "En secciones con varias subdivisiones, cambia el carácter melódico "
+        "en cada bloque de compases (no un solo gesto durante toda la sección). "
+        "Frase A presenta; frase B contrasta."
     )
     return "\n".join(lines) + "\n"
 
@@ -233,18 +237,22 @@ def compose_melody_track(state: SongState) -> Track:
                 "Evita notas fuera del acorde en drops y climax.\n"
             )
 
-    # phrase length hints per section
+    # phrase length hints per section (primer segmento o resumen)
     phrase_hints = []
     for section_id in structure.sections:
         dev = dev_map.get(section_id)
         section_intent = intent_map.get(section_id)
         if dev:
-            bars = dev.phrase_length_bars
+            active_dev = dev.segments[0] if dev.segments else dev
+            bars = active_dev.phrase_length_bars
             if section_intent and section_intent.density >= 0.7:
                 bars = min(bars, 2)
             rest_pct = int(melody_rest_ratio(section_intent) * 100)
+            seg_note = (
+                f", {len(dev.segments)} micro-arcos" if dev.segments else ""
+            )
             phrase_hints.append(
-                f"  - {section_id}: frases de {bars} compases, rests ≤{rest_pct}%"
+                f"  - {section_id}: frases de {bars} compases{seg_note}, rests ≤{rest_pct}%"
             )
 
     system = SystemMessage(content=(

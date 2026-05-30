@@ -83,6 +83,25 @@ def test_development_planner_varies_by_role():
     print("✓ test_development_planner_varies_by_role OK")
 
 
+def test_drop_section_has_segments_when_long():
+    state = _boss_state()
+    state["structure"] = state["structure"].model_copy(
+        update={
+            "bars_per_section": {
+                "intro": 4, "build-up": 8, "drop": 24, "breakdown": 4,
+            },
+            "total_bars": 40,
+        },
+    )
+    state.update(strategy_planner_node(state))
+    dev = development_planner_node(state)["development"]
+    drop = next(s for s in dev.sections if s.section_id == "drop")
+    assert len(drop.segments) >= 2
+    assert sum(s.end_bar - s.start_bar for s in drop.segments) == 24
+    print(f"  drop micro-arcos: {len(drop.segments)}")
+    print("✓ test_drop_section_has_segments_when_long OK")
+
+
 def test_generation_seed_deterministic():
     s1 = compute_generation_seed("boss fight", 80)
     s2 = compute_generation_seed("boss fight", 80)
@@ -149,10 +168,24 @@ def test_apply_development_changes_degrees():
 
 def test_countermelody_in_arrangement_and_compose():
     state = _boss_state()
-    from cadence.schemas.song_state import GenerationStrategies
-    state["strategies"] = GenerationStrategies(generation_seed=42)
+    from cadence.schemas.song_state import GenerationStrategies, OrchestrationPlan, InstrumentAssignment
+    state["strategies"] = GenerationStrategies(
+        generation_seed=42,
+        counter_pattern="offbeat_sync",
+    )
     state["technical_proposal"] = state["technical_proposal"].model_copy(
         update={"genre_tags": ["orchestral", "cinematic"]},
+    )
+    state["orchestration_plan"] = OrchestrationPlan(
+        drum_pattern="techno",
+        bass_pattern="driving",
+        instruments=[
+            InstrumentAssignment(instrument_id="drums", gm_program=0, active=True),
+            InstrumentAssignment(instrument_id="bass", gm_program=38, active=True),
+            InstrumentAssignment(instrument_id="melody", gm_program=81, active=True),
+            InstrumentAssignment(instrument_id="countermelody", gm_program=54, active=True),
+            InstrumentAssignment(instrument_id="arp_synth", gm_program=81, active=True),
+        ],
     )
     state["harmony"] = harmony_planner_node(state)["harmony"]
     state["development"] = development_planner_node(state)["development"]
@@ -213,6 +246,7 @@ def test_phrase_bar_repeat_lower_than_old_loop():
 
 if __name__ == "__main__":
     test_development_planner_varies_by_role()
+    test_drop_section_has_segments_when_long()
     test_generation_seed_deterministic()
     test_phrases_cycle_with_development()
     test_apply_development_changes_degrees()

@@ -93,7 +93,9 @@ def _layer_spec(
 
 
 def _effective_instruments(state: SongState, plan: OrchestrationPlan) -> set[str]:
-    """Instrumentos activos del plan + capas comprometidas por strategies."""
+    """Instrumentos activos del plan + strategies, con presupuesto lead general."""
+    from cadence.music.harmonic_coherence import apply_lead_support_cap
+
     chosen = active_instrument_ids(plan)
     proposal = state.get("technical_proposal")
     intent = state["intent"]
@@ -111,7 +113,12 @@ def _effective_instruments(state: SongState, plan: OrchestrationPlan) -> set[str
         style_profile=profile,
     ):
         chosen.discard("drums")
-    return chosen
+
+    return apply_lead_support_cap(
+        chosen,
+        energy_level=energy,
+        use_case=intent.use_case,
+    )
 
 
 def _build_layers_from_orchestration(

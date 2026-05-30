@@ -114,8 +114,19 @@ def resolve_echo_source_for_stack(
     Eco desde capa consonante si hay stack armónico denso.
     auto + ≥2 soportes → arp_synth si existe; si no, melody.
     """
-    if strategies and strategies.echo_source and strategies.echo_source != "auto":
-        return strategies.echo_source
+    explicit = strategies.echo_source if strategies else "auto"
+    if explicit and explicit != "auto":
+        if (
+            explicit == "melody"
+            and should_quantize_melody_to_chords(
+                count_harmonic_support_layers(active_ids),
+                energy_level,
+                use_case,
+            )
+            and "arp_synth" in active_ids
+        ):
+            return "arp_synth"
+        return explicit
 
     if should_quantize_melody_to_chords(
         count_harmonic_support_layers(active_ids),

@@ -9,6 +9,7 @@ Uso:
     uv run python -m cadence.analysis.midi_benchmark examples/ASGORE.mid
     uv run python -m cadence.analysis.midi_benchmark output/*.rsong
     uv run python -m cadence.analysis.midi_benchmark --compare
+    uv run python -m cadence.analysis.midi_benchmark --suite
     uv run python -m cadence.analysis.midi_benchmark output/foo.rsong --style dense_dance
 """
 
@@ -382,10 +383,51 @@ def load_reference_metrics() -> dict[str, MidiMetrics]:
     return refs
 
 
+def collect_suite_rsongs() -> list[tuple[Path, str]]:
+    """Salidas Cadence cuyo nombre encaja con ids del catálogo de prompts."""
+    from cadence.analysis.benchmark_examples import load_benchmark_prompts
+
+    out: list[tuple[Path, str]] = []
+    if not OUTPUT_DIR.exists():
+        return out
+    for bp in load_benchmark_prompts():
+        pattern = f"cadence_{bp.id}_*.rsong"
+        matches = sorted(OUTPUT_DIR.glob(pattern))
+        if matches:
+            out.append((matches[-1], bp.archetype))
+    return out
+
+
+def print_benchmark_suite_catalog() -> None:
+    from cadence.analysis.benchmark_examples import load_benchmark_prompts
+
+    print("\n── Catálogo de prompts de benchmark (alineados con examples/*.mid) ──")
+    for bp in load_benchmark_prompts():
+        refs = ", ".join(bp.midi_refs)
+        print(f"\n  [{bp.archetype}] {bp.label}")
+        print(f"    refs MIDI : {refs}")
+        print(f"    export    : cadence_{bp.id}_<timestamp>.rsong")
+        print(f"    prompt    : {bp.prompt[:72]}…")
+
+
 def main(argv: list[str] | None = None) -> None:
     args = list(argv or sys.argv[1:])
     compare_mode = "--compare" in args
+    suite_mode = "--suite" in args
     style_override: str | None = None
+
+    if suite_mode:
+        args = [a for a in args if a != "--suite"]
+        print_benchmark_suite_catalog()
+        suite = collect_suite_rsongs()
+        if not suite:
+            print(
+                "\n  (sin salidas cadence_<id>_*.rsong en output/ — "
+                "genera con los prompts de examples/benchmark_prompts.json)"
+            )
+            return
+        args = [str(p) for p, _ in suite]
+        # style per file applied below via path_meta + override map
 
     if "--style" in args:
         idx = args.index("--style")
@@ -444,11 +486,24 @@ def main(argv: list[str] | None = None) -> None:
 
     profiles = build_style_profiles(metrics_by_file)
 
-    attach_evaluations(
-        metrics, profiles, metrics_by_file,
-        style_override=style_override,
-        path_meta=path_meta,
-    )
+    if suite_mode:
+        suite_map = {p.name: arch for p, arch in collect_suite_rsongs()}
+        for m in metrics:
+            if m.file in suite_map:
+                arch_id = suite_map[m.file]
+                profile = profiles[arch_id]
+                m.archetype = arch_id
+                m.evaluation = evaluate_against_style(
+                    m, profile,
+                    meta_summary=f"benchmark suite → {arch_id}",
+                    metrics_by_file=metrics_by_file,
+                )
+    else:
+        attach_evaluations(
+            metrics, profiles, metrics_by_file,
+            style_override=style_override,
+            path_meta=path_meta,
+        )
 
     print_report(metrics, profiles, metrics_by_file)
 

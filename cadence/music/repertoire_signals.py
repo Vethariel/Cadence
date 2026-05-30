@@ -136,12 +136,7 @@ def layer_pattern_bias(
         bias["pluck_candidates"] = ["sixteenth", "eighth", "syncopated"] + list(PLUCK_PATTERN_POOL)
         bias["counter_candidates"] = ["offbeat_sync", "sixteenth", "syncopated"] + list(COUNTER_PATTERN_POOL)
         bias["bass_candidates"] = ["octave_pulse", "driving", "syncopated", "half_time"]
-        if energy_level >= 5:
-            bias["echo_source"] = "melody"
-        elif is_dense_pattern(
-            bias["arp_candidates"][0] if bias.get("arp_candidates") else None, "arp",
-        ):
-            bias["echo_source"] = "arp_synth"
+        # echo_source queda en auto; resolve_echo_source_for_stack elige capa consonante
 
     if uc == "cutscene" and energy_level >= 3:
         sc = list(bias.get("stab_candidates") or list(STAB_PATTERN_POOL))
@@ -183,7 +178,16 @@ def instruments_implied_by_strategies(
         implied.add("chord_stab")
 
     if strategies.pluck_pattern and is_dense_pattern(strategies.pluck_pattern, "pluck"):
-        implied.add("synth_pluck")
+        has_dense_arp = is_dense_pattern(strategies.arp_pattern, "arp")
+        has_counter = (
+            strategies.counter_pattern
+            and strategies.counter_pattern in COUNTER_STEP_PATTERNS
+            and not is_sparse_pattern(strategies.counter_pattern, "counter")
+        )
+        if energy_level >= 4 and uc == "game" and has_dense_arp and has_counter:
+            pass
+        else:
+            implied.add("synth_pluck")
 
     if strategies.perc_pattern and not is_sparse_pattern(strategies.perc_pattern, "perc"):
         if energy_level >= 3 and uc != "loop":

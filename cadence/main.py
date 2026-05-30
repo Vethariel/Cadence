@@ -40,6 +40,25 @@ class GenerateResponse(BaseModel):
 def health():
     return {"status": "ok", "service": "cadence"}
 
+
+@app.get("/benchmark-prompts")
+def benchmark_prompts():
+    """Prompts de ejemplo alineados con arquetipos del corpus MIDI en examples/."""
+    from cadence.analysis.benchmark_examples import load_benchmark_prompts
+
+    return {
+        "prompts": [
+            {
+                "id": p.id,
+                "archetype": p.archetype,
+                "label": p.label,
+                "midi_refs": list(p.midi_refs),
+                "prompt": p.prompt,
+            }
+            for p in load_benchmark_prompts()
+        ],
+    }
+
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(request: GenerateRequest):
     if not request.prompt or len(request.prompt.strip()) < 3:
