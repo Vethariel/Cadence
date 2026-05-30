@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useCadenceStore } from '../store'
 import { generateSong } from '../api'
 import { uid } from '../uid'
+import { startPlayback, stopPlayback } from '../audio/player'
 
 const FALLBACK_SUGGESTIONS = [
   {
@@ -41,9 +42,10 @@ const FALLBACK_SUGGESTIONS = [
   },
 ]
 
-function Message({ msg }) {
+function Message({ msg, onPlay }) {
   const isUser = msg.role === 'user'
   const isSystem = msg.role === 'system'
+  const canPlay = Boolean(msg.productionId) && !isUser && !isSystem
 
   return (
     <div style={{
@@ -86,6 +88,26 @@ function Message({ msg }) {
           </span>
         )}
         {msg.content}
+        {canPlay && (
+          <div style={{ marginTop: '10px' }}>
+            <button
+              type="button"
+              onClick={() => onPlay(msg.productionId)}
+              style={{
+                background: 'rgba(124,58,237,0.2)',
+                border: '1px solid rgba(124,58,237,0.5)',
+                borderRadius: '4px',
+                color: 'var(--accent4)',
+                fontFamily: 'Space Mono, monospace',
+                fontSize: '10px',
+                cursor: 'pointer',
+                padding: '4px 10px',
+              }}
+            >
+              ▶ Play
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -113,13 +135,21 @@ function TypingIndicator() {
   )
 }
 
-export default function Chat({ onResult, onOpenProductions }) {
+export default function Chat() {
   const [input, setInput] = useState('')
   const [suggestions, setSuggestions] = useState(FALLBACK_SUGGESTIONS)
-  const { messages, isGenerating, addMessage, setGenerating, setResult } =
-    useCadenceStore()
+  const {
+    messages,
+    isGenerating,
+    addMessage,
+    setGenerating,
+    setResult,
+    selectProduction,
+    currentProductionId,
+  } = useCadenceStore()
   const bottomRef = useRef(null)
-  const inputRef  = useRef(null)
+  const inputRef = useRef(null)
+  const welcomeInitializedRef = useRef(false)
 
   useEffect(() => {
     fetch('/benchmark-prompts')
@@ -144,13 +174,37 @@ export default function Chat({ onResult, onOpenProductions }) {
   }, [messages, isGenerating])
 
   useEffect(() => {
-    if (messages.length === 0) {
-      addMessage('system',
+    if (welcomeInitializedRef.current) return
+    const hasWelcome = messages.some(
+      (m) =>
+        m.role === 'system' &&
+        typeof m.content === 'string' &&
+        m.content.includes('bienvenido a cadence.')
+    )
+    if (!hasWelcome) {
+      addMessage(
+        'system',
         'bienvenido a cadence.\ndescribe la canción que necesitas\n' +
-        'o usa uno de los ejemplos de abajo.'
+          'o usa uno de los ejemplos de abajo.'
       )
     }
-  }, [])
+    welcomeInitializedRef.current = true
+  }, [addMessage, messages])
+
+  async function handlePlayFromHistory(productionId) {
+    if (!productionId) return
+    await stopPlayback()
+    const state = useCadenceStore.getState()
+    const needsLoad = state.currentProductionId !== productionId || !state.rsong
+    if (needsLoad) {
+      const ok = await selectProduction(productionId)
+      if (!ok) return
+    }
+    const next = useCadenceStore.getState()
+    if (next.rsong) {
+      await startPlayback(next.rsong, { startAtMs: 0 })
+    }
+  }
 
   async function handleSubmit(prompt) {
     const text = (prompt || input).trim()
@@ -163,40 +217,50 @@ export default function Chat({ onResult, onOpenProductions }) {
 
     try {
       const data = await generateSong(text)
+      const productionId = data.export_path?.split('/').pop() ?? currentProductionId
+      const content =
+        `✓ canción generada\n` +
+        `  bpm        : ${data.bpm}\n` +
+        `  tonalidad  : ${data.key}\n` +
+        `  secciones  : ${data.sections.join(' → ')}\n` +
+        `  duración   : ${(data.duration_ms / 1000).toFixed(1)}s\n` +
+        `  score      : ${data.validation_score}`
 
-      // Reemplazar el mensaje "analizando..." con el resultado
       useCadenceStore.setState(s => ({
         messages: s.messages.slice(0, -1).concat({
           role: 'agent',
-          content:
-            `✓ canción generada\n` +
-            `  bpm        : ${data.bpm}\n` +
-            `  tonalidad  : ${data.key}\n` +
-            `  secciones  : ${data.sections.join(' → ')}\n` +
-            `  duración   : ${(data.duration_ms / 1000).toFixed(1)}s\n` +
-            `  score      : ${data.validation_score}`,
+          content,
+          productionId,
           id: uid(),
-        })
+        }),
       }))
 
-      setResult(data.rsong, {
-        bpm: data.bpm,
-        key: data.key,
-        sections: data.sections,
-        duration_ms: data.duration_ms,
-        knowledge_level: data.knowledge_level,
-        validation_score: data.validation_score,
-      }, data.export_path?.split('/').pop() ?? null)
-
-      onResult?.()
-
+      setResult(
+        data.rsong,
+        {
+          title: data.rsong?.header?.title,
+          bpm: data.bpm,
+          key: data.key,
+          mode: data.rsong?.header?.mode,
+          meter: data.rsong?.header?.meter,
+          archetype: data.rsong?.game_meta?.policy?.archetype,
+          pattern_id: data.rsong?.game_meta?.policy?.pattern_id,
+          active_instruments:
+            data.rsong?.game_meta?.arrangement?.active_instruments || [],
+          sections: data.sections,
+          duration_ms: data.duration_ms,
+          knowledge_level: data.knowledge_level,
+          validation_score: data.validation_score,
+        },
+        productionId ?? null
+      )
     } catch (err) {
       useCadenceStore.setState(s => ({
         messages: s.messages.slice(0, -1).concat({
           role: 'system',
           content: `✗ error: ${err.message}`,
           id: uid(),
-        })
+        }),
       }))
     } finally {
       setGenerating(false)
@@ -214,54 +278,45 @@ export default function Chat({ onResult, onOpenProductions }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column',
-      height: '100%', padding: '24px',
+      height: '100%', padding: '18px',
     }}>
-
-      {/* Header */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginBottom: '20px',
+        marginBottom: '14px',
       }}>
         <div style={{
-          fontFamily: 'Syne, sans-serif',
+          fontFamily: 'var(--font-display)',
           fontSize: '22px', fontWeight: 800,
-          letterSpacing: '-0.02em',
-          background: 'linear-gradient(135deg, #ff4d6d, #7c3aed)',
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+          background: 'linear-gradient(135deg, var(--accent1), var(--accent2))',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
         }}>
           cadence
         </div>
-        <button
-          onClick={onOpenProductions}
-          style={{
-            background: 'var(--surface2)',
-            border: '1px solid var(--border)',
-            borderRadius: '4px',
-            padding: '6px 12px',
-            color: 'var(--muted)',
-            fontFamily: 'Space Mono, monospace',
-            fontSize: '11px',
-            cursor: 'pointer',
-          }}
-        >
-          mis producciones
-        </button>
+        <div style={{
+          fontFamily: 'Space Mono, monospace',
+          fontSize: '10px',
+          color: 'var(--muted)',
+        }}>
+          studio chat
+        </div>
       </div>
 
-      {/* Messages */}
       <div style={{
         flex: 1, overflowY: 'auto',
         paddingRight: '4px',
         scrollbarWidth: 'thin',
         scrollbarColor: 'var(--border) transparent',
       }}>
-        {messages.map(msg => <Message key={msg.id} msg={msg} />)}
+        {messages.map(msg => (
+          <Message key={msg.id} msg={msg} onPlay={handlePlayFromHistory} />
+        ))}
         {isGenerating && <TypingIndicator />}
         <div ref={bottomRef} />
       </div>
 
-      {/* Suggestions */}
       {messages.length <= 2 && !isGenerating && (
         <div style={{
           display: 'flex', flexWrap: 'wrap', gap: '6px',
@@ -302,7 +357,6 @@ export default function Chat({ onResult, onOpenProductions }) {
         </div>
       )}
 
-      {/* Input */}
       <div style={{
         display: 'flex', gap: '8px',
         borderTop: '1px solid var(--border)',
@@ -329,8 +383,12 @@ export default function Chat({ onResult, onOpenProductions }) {
             outline: 'none',
             transition: 'border-color 0.2s',
           }}
-          onFocus={e => e.target.style.borderColor = 'var(--accent2)'}
-          onBlur={e  => e.target.style.borderColor = 'var(--border)'}
+          onFocus={e => {
+            e.target.style.borderColor = 'var(--accent2)'
+          }}
+          onBlur={e => {
+            e.target.style.borderColor = 'var(--border)'
+          }}
         />
         <button
           onClick={() => handleSubmit()}

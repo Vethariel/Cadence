@@ -62,6 +62,10 @@ class CreativeBrief(BaseModel):
     dramatic_objective: str = Field(
         description="Qué debe lograr la pieza en el juego/animación (función dramática).",
     )
+    central_conflict: str = Field(
+        default="",
+        description="Conflicto principal único que guía el brief narrativo.",
+    )
     emotional_arc: str = Field(
         description="Cómo evoluciona la emoción de inicio a fin (ej. dread → defiance → triumph).",
     )
@@ -74,6 +78,22 @@ class CreativeBrief(BaseModel):
     mood_keywords: list[str] = Field(
         default_factory=list,
         description="3–6 palabras de mood en inglés (dark, urgent, triumphant…).",
+    )
+    dominant_tone: str = Field(
+        default="",
+        description="Tono emocional dominante del brief en lenguaje natural.",
+    )
+    secondary_tone: str = Field(
+        default="",
+        description="Matiz emocional secundario que acompaña el tono dominante.",
+    )
+    negative_constraints: list[str] = Field(
+        default_factory=list,
+        description="Elementos narrativos/expresivos que deben evitarse.",
+    )
+    scenario_assumption: str = Field(
+        default="",
+        description="Suposición explícita usada cuando el prompt del usuario es ambiguo.",
     )
     use_case: Literal["game", "animation", "loop", "cutscene"] = Field(
         default="game",
@@ -92,6 +112,10 @@ class CreativeBrief(BaseModel):
     reasoning: str = Field(
         default="",
         description="Por qué elegiste este enfoque dramático respecto al prompt original.",
+    )
+    coherence_notes: str = Field(
+        default="",
+        description="Chequeo breve de coherencia entre logline, conflicto, objetivo y arco.",
     )
 
 

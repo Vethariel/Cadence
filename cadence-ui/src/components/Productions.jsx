@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useCadenceStore } from '../store'
+import { startPlayback, stopPlayback } from '../audio/player'
 
 function formatDate(iso) {
   if (!iso) return ''
@@ -16,7 +17,7 @@ function formatDuration(ms) {
   return `${m}:${String(s % 60).padStart(2, '0')}`
 }
 
-export default function Productions({ onSelect }) {
+export default function Productions() {
   const {
     productions,
     productionsLoading,
@@ -24,7 +25,6 @@ export default function Productions({ onSelect }) {
     currentProductionId,
     loadProductions,
     selectProduction,
-    setView,
   } = useCadenceStore()
 
   useEffect(() => {
@@ -32,8 +32,13 @@ export default function Productions({ onSelect }) {
   }, [loadProductions])
 
   async function handleSelect(filename) {
+    await stopPlayback()
     const ok = await selectProduction(filename)
-    if (ok) onSelect?.()
+    if (!ok) return
+    const { rsong } = useCadenceStore.getState()
+    if (rsong) {
+      await startPlayback(rsong, { startAtMs: 0 })
+    }
   }
 
   return (
@@ -47,9 +52,11 @@ export default function Productions({ onSelect }) {
       }}>
         <div>
           <div style={{
-            fontFamily: 'Syne, sans-serif',
+            fontFamily: 'var(--font-display)',
             fontSize: '22px', fontWeight: 800,
-            background: 'linear-gradient(135deg, #06d6a0, #7c3aed)',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            background: 'linear-gradient(135deg, var(--accent3), var(--accent2))',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
           }}>
@@ -59,24 +66,9 @@ export default function Productions({ onSelect }) {
             fontFamily: 'Space Mono, monospace',
             fontSize: '11px', color: 'var(--muted)', marginTop: '4px',
           }}>
-            outputs en /output — comparar .rsong vs .mid
+            outputs en /output para reproducir y exportar
           </div>
         </div>
-        <button
-          onClick={() => setView('chat')}
-          style={{
-            background: 'var(--surface2)',
-            border: '1px solid var(--border)',
-            borderRadius: '4px',
-            padding: '6px 12px',
-            color: 'var(--muted)',
-            fontFamily: 'Space Mono, monospace',
-            fontSize: '11px',
-            cursor: 'pointer',
-          }}
-        >
-          ← chat
-        </button>
       </div>
 
       <button
@@ -111,7 +103,7 @@ export default function Productions({ onSelect }) {
         </div>
       )}
 
-      <div style={{
+      <div className="cadence-scrollbar" style={{
         flex: 1, overflowY: 'auto',
         display: 'flex', flexDirection: 'column', gap: '8px',
       }}>
@@ -133,42 +125,22 @@ export default function Productions({ onSelect }) {
             <button
               key={p.id}
               onClick={() => handleSelect(p.id)}
-              style={{
-                textAlign: 'left',
-                background: active ? 'rgba(124,58,237,0.12)' : 'var(--surface2)',
-                border: `1px solid ${active ? 'rgba(124,58,237,0.5)' : 'var(--border)'}`,
-                borderRadius: '6px',
-                padding: '14px 16px',
-                cursor: 'pointer',
-                transition: 'border-color 0.2s, background 0.2s',
-              }}
+              className={`production-card ${active ? 'active' : ''}`}
             >
-              <div style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-                marginBottom: '6px',
-              }}>
-                <span style={{
-                  fontFamily: 'Syne, sans-serif',
-                  fontSize: '14px', fontWeight: 700,
-                  color: active ? 'var(--accent2)' : 'var(--text)',
-                }}>
+              <div className="production-card-header">
+                <span className="production-card-title">
                   {p.title || p.filename}
                 </span>
-                <span style={{
-                  fontFamily: 'Space Mono, monospace',
-                  fontSize: '10px', color: 'var(--muted)',
-                }}>
+                <span className="production-card-date">
                   {formatDate(p.created_at)}
                 </span>
               </div>
-              <div style={{
-                fontFamily: 'Space Mono, monospace',
-                fontSize: '11px', color: 'var(--muted)',
-                display: 'flex', flexWrap: 'wrap', gap: '12px',
-              }}>
+              <div className="production-card-meta">
                 <span>{p.bpm} BPM</span>
-                <span>{p.key}</span>
+                <span>{p.key || '—'}</span>
                 <span>{formatDuration(p.duration_ms)}</span>
+              </div>
+              <div className="production-card-meta production-card-meta-secondary">
                 <span>{p.track_count} tracks</span>
                 {p.validation_score != null && (
                   <span>score {p.validation_score.toFixed(2)}</span>

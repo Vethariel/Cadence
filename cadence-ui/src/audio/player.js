@@ -1,9 +1,8 @@
 import { useCadenceStore } from '../store'
-import { resolveGmProgram, resolveInstrumentId } from './gm-programs'
+import { resolveGmProgram } from './gm-programs'
 import {
   effectiveTrackVolumeDb,
   effectiveVelocity,
-  sectionAtTimeMs,
 } from './section-gain'
 import {
   buildMasterBus,
@@ -35,6 +34,7 @@ let masterBus = null
 let synth = null
 let playbackStartTime = 0
 let loadingPromise = null
+let activeRsong = null
 
 function trackVolumeDb(track, rsong) {
   const layers = rsong?.game_meta?.arrangement?.layers
@@ -58,10 +58,6 @@ function resolveChannel(track) {
   return Math.min(15, Math.max(0, ch))
 }
 
-function findRsongTrack(rsong, instrumentId) {
-  return rsong?.tracks?.find(t => (t.instrument_id || t.id) === instrumentId)
-}
-
 function isTrackMutedById(instrumentId) {
   return !!useCadenceStore.getState().trackMutes[instrumentId]
 }
@@ -71,16 +67,21 @@ function shouldScheduleTrack(track) {
   return !isTrackMutedById(id)
 }
 
-function scheduleRsongTrack(synthInstance, track, rsong, startTime) {
+function scheduleRsongTrack(synthInstance, track, rsong, startTime, startAtMs = 0) {
   const channel = resolveChannel(track)
   const instrumentId = track.instrument_id || track.id
   let lastSection = null
 
   for (const event of track.events) {
     if (event.type === 'rest') continue
+    const eventStartMs = event.t
+    const eventEndMs = event.t + event.duration_ms
+    if (eventEndMs <= startAtMs) continue
 
     const section = event.section || 'drop'
-    const t = startTime + event.t / 1000
+    const normalizedStartMs = Math.max(startAtMs, eventStartMs) - startAtMs
+    const trimMs = Math.max(0, startAtMs - eventStartMs)
+    const t = startTime + normalizedStartMs / 1000
 
     if (section !== lastSection) {
       setupChannel(synthInstance, channel, {
@@ -95,60 +96,9 @@ function scheduleRsongTrack(synthInstance, track, rsong, startTime) {
       lastSection = section
     }
 
-    const dur = Math.max(0.04, event.duration_ms / 1000)
+    const dur = Math.max(0.04, (event.duration_ms - trimMs) / 1000)
     const vel = effectiveVelocity(event.velocity, section, rsong)
     scheduleNote(synthInstance, channel, event.pitch, vel, t, dur)
-  }
-}
-
-function scheduleMidiTrack(synthInstance, track, rsong, startTime) {
-  if (!track.notes.length) return
-
-  const instrumentId = resolveInstrumentId(track.name)
-  if (isTrackMutedById(instrumentId)) return
-  const isDrum = track.channel === 9
-    || instrumentId === 'drums'
-    || instrumentId === 'perc_aux'
-    || (track.name || '').toLowerCase().includes('drum')
-    || (track.name || '').toLowerCase().includes('perc')
-
-  const channel = isDrum ? 9 : (track.channel ?? 0)
-  const rsongTrack = findRsongTrack(rsong, instrumentId)
-  const role = rsongTrack?.role ?? (isDrum ? 'rhythm' : 'lead')
-  const baseDb = rsongTrack
-    ? trackVolumeDb(rsongTrack, rsong)
-    : (isDrum ? DEFAULT_VOL.rhythm : DEFAULT_VOL.lead)
-
-  let lastSection = null
-
-  for (const note of track.notes) {
-    const section = sectionAtTimeMs(note.time * 1000, rsong)
-    const t = startTime + note.time
-
-    if (section !== lastSection) {
-      setupChannel(synthInstance, channel, {
-        program: isDrum ? null : resolveGmProgram(instrumentId, role),
-        isDrum,
-        volumeDb: effectiveTrackVolumeDb(
-          rsongTrack ?? { role, instrument_id: instrumentId },
-          rsong,
-          section,
-          baseDb,
-        ),
-        pan: trackPan({ instrument_id: instrumentId }),
-        time: t,
-      })
-      lastSection = section
-    }
-
-    scheduleNote(
-      synthInstance,
-      channel,
-      note.midi,
-      effectiveVelocity(Math.round(note.velocity * 127), section, rsong),
-      t,
-      Math.max(0.04, note.duration),
-    )
   }
 }
 
@@ -156,9 +106,9 @@ export function getAnalyser() {
   return masterBus ?? null
 }
 
-export async function startPlayback(rsong) {
+export async function startPlayback(rsong, { startAtMs = 0 } = {}) {
   if (loadingPromise) return loadingPromise
-  loadingPromise = _startRsong(rsong)
+  loadingPromise = _startRsong(rsong, startAtMs)
   try {
     await loadingPromise
   } finally {
@@ -166,20 +116,10 @@ export async function startPlayback(rsong) {
   }
 }
 
-export async function startMidiPlayback(midiUrl, { durationMs, rsong }) {
-  if (loadingPromise) return loadingPromise
-  loadingPromise = _startMidi(midiUrl, { durationMs, rsong })
-  try {
-    await loadingPromise
-  } finally {
-    loadingPromise = null
-  }
-}
-
-function _beginTransport(durationMs) {
+function _beginTransport(durationMs, startAtMs) {
   const ctx = getAudioContext()
   timerId = setInterval(() => {
-    const ms = Math.max(0, (ctx.currentTime - playbackStartTime) * 1000)
+    const ms = Math.max(0, startAtMs + (ctx.currentTime - playbackStartTime) * 1000)
     useCadenceStore.getState().setCurrentTime(ms)
     if (ms >= durationMs) {
       stopPlayback()
@@ -187,9 +127,10 @@ function _beginTransport(durationMs) {
     }
   }, 50)
   useCadenceStore.getState().setPlaying(true)
+  useCadenceStore.getState().setPaused(false)
 }
 
-async function _startSession({ durationMs, schedule }) {
+async function _startSession({ durationMs, schedule, startAtMs = 0 }) {
   await stopPlayback()
   useCadenceStore.getState().setAudioLoading(true)
   try {
@@ -201,34 +142,14 @@ async function _startSession({ durationMs, schedule }) {
 
     playbackStartTime = ctx.currentTime + PLAYBACK_LOOKAHEAD
     schedule(synth, playbackStartTime)
-    _beginTransport(durationMs)
+    _beginTransport(durationMs, startAtMs)
   } finally {
     useCadenceStore.getState().setAudioLoading(false)
   }
 }
 
-async function _startMidi(midiUrl, { durationMs, rsong }) {
-  const { Midi } = await import('@tonejs/midi')
-  const res = await fetch(midiUrl)
-  const midi = new Midi(await res.arrayBuffer())
-
-  await _startSession({
-    durationMs,
-    schedule: (synthInstance, startTime) => {
-      for (const track of midi.tracks) {
-        if (!shouldScheduleTrack({
-          instrument_id: resolveInstrumentId(track.name),
-          id: resolveInstrumentId(track.name),
-        })) {
-          continue
-        }
-        scheduleMidiTrack(synthInstance, track, rsong, startTime)
-      }
-    },
-  })
-}
-
-async function _startRsong(rsong) {
+async function _startRsong(rsong, startAtMs = 0) {
+  activeRsong = rsong
   const sorted = [...rsong.tracks]
     .filter(shouldScheduleTrack)
     .sort((a, b) => {
@@ -238,12 +159,48 @@ async function _startRsong(rsong) {
 
   await _startSession({
     durationMs: rsong.header.duration_ms,
+    startAtMs,
     schedule: (synthInstance, startTime) => {
       for (const track of sorted) {
-        scheduleRsongTrack(synthInstance, track, rsong, startTime)
+        scheduleRsongTrack(synthInstance, track, rsong, startTime, startAtMs)
       }
     },
   })
+}
+
+export async function pausePlayback() {
+  if (!useCadenceStore.getState().isPlaying) return
+  if (timerId) {
+    clearInterval(timerId)
+    timerId = null
+  }
+  const ctx = getAudioContext()
+  const current = useCadenceStore.getState().currentTimeMs
+  useCadenceStore.getState().setCurrentTime(current)
+  await ctx.suspend()
+  useCadenceStore.getState().setPlaying(false)
+  useCadenceStore.getState().setPaused(true)
+}
+
+export async function resumePlayback() {
+  if (!useCadenceStore.getState().isPaused) return
+  const ctx = getAudioContext()
+  await ctx.resume()
+  const currentOffset = Math.max(0, useCadenceStore.getState().currentTimeMs)
+  playbackStartTime = ctx.currentTime
+  _beginTransport(activeRsong?.header?.duration_ms || Infinity, currentOffset)
+}
+
+export async function seekTo(ms) {
+  const state = useCadenceStore.getState()
+  const rsong = state.rsong || activeRsong
+  if (!rsong) return
+  const duration = rsong.header?.duration_ms || 0
+  const next = Math.max(0, Math.min(ms, duration))
+  state.setCurrentTime(next)
+  if (state.isPlaying || state.isPaused) {
+    await startPlayback(rsong, { startAtMs: next })
+  }
 }
 
 export async function stopPlayback() {
@@ -264,6 +221,7 @@ export async function stopPlayback() {
     } catch { /* noop */ }
     masterBus = null
   }
+  activeRsong = null
 
   useCadenceStore.getState().reset()
 }

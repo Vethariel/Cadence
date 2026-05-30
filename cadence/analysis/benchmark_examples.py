@@ -144,6 +144,12 @@ def format_inspiration_profiles_for_llm(path: Path | None = None) -> str:
     for archetype, p in profiles.items():
         metrics = p.get("target_metrics", {})
         cues = p.get("style_cues", [])
+        rhythm = p.get("rhythm_signature_16", [])
+        intervals = p.get("melody_interval_histogram", {})
+        cadences = p.get("cadence_tendencies", {})
+        harmonic = p.get("harmonic_rhythm_deep", {})
+        dynamics = p.get("dynamics_profile", {})
+        motivic = p.get("motivicity_signature", {})
         lines.append(f"- {archetype}:")
         if metrics:
             compact = ", ".join(
@@ -155,5 +161,50 @@ def format_inspiration_profiles_for_llm(path: Path | None = None) -> str:
                 lines.append(f"  métricas objetivo: {compact}")
         if cues:
             lines.append(f"  claves de estilo: {', '.join(str(x) for x in cues[:6])}")
+        if isinstance(rhythm, list) and len(rhythm) == 16 and any(float(x) > 0 for x in rhythm):
+            top_slots = sorted(range(16), key=lambda i: float(rhythm[i]), reverse=True)[:4]
+            lines.append(f"  acentos_16: slots {', '.join(str(i) for i in top_slots)}")
+        if intervals and any(float(v) > 0 for v in intervals.values()):
+            lines.append(
+                "  intervalos: "
+                f"step={intervals.get('step_1_2', 0):.2f}, "
+                f"skip={intervals.get('skip_3_4', 0):.2f}, "
+                f"leap={intervals.get('leap_5_7', 0):.2f}, "
+                f"wide={intervals.get('leap_8_plus', 0):.2f}"
+            )
+        if cadences and any(float(v) > 0 for v in cadences.values()):
+            cad_top = sorted(cadences.items(), key=lambda kv: float(kv[1]), reverse=True)[:2]
+            lines.append(f"  cadencias_tendencia: {', '.join(f'{k}={v:.2f}' for k, v in cad_top)}")
+        if harmonic and (
+            float(harmonic.get("chord_hold_beats_mean", 0.0)) > 0
+            or any(float(x) > 0 for x in harmonic.get("chord_change_density_curve_4q", []))
+        ):
+            curve = harmonic.get("chord_change_density_curve_4q", [0.0, 0.0, 0.0, 0.0])
+            lines.append(
+                "  ritmo_armonico_profundo: "
+                f"hold_mean={float(harmonic.get('chord_hold_beats_mean', 0.0)):.2f}, "
+                f"hold_sigma={float(harmonic.get('chord_hold_beats_stdev', 0.0)):.2f}, "
+                f"curve4q={[round(float(x),2) for x in curve]}"
+            )
+        if dynamics and (
+            float(dynamics.get("velocity_mean", 0.0)) > 0
+            or float(dynamics.get("dynamic_range_p90_p10", 0.0)) > 0
+        ):
+            lines.append(
+                "  dinamica: "
+                f"vel_mean={float(dynamics.get('velocity_mean', 0.0)):.1f}, "
+                f"vel_sigma={float(dynamics.get('velocity_stdev', 0.0)):.1f}, "
+                f"range_p90_p10={float(dynamics.get('dynamic_range_p90_p10', 0.0)):.1f}, "
+                f"accent_strong={float(dynamics.get('accent_on_strong_beat_ratio', 0.0)):.2f}"
+            )
+        if motivic:
+            rep = float(motivic.get("motif_repeat_ratio_4", 0.0))
+            top_ng = motivic.get("top_interval_ngrams_4", [])
+            if rep > 0 or top_ng:
+                lines.append(
+                    "  motivicidad: "
+                    f"repeat4={rep:.2f}, "
+                    f"top_ngrams={', '.join(str(x) for x in top_ng[:3]) if top_ng else 'n/a'}"
+                )
     lines.append("Prioriza consistencia narrativa + variación motívica sobre imitación de obras.")
     return "\n".join(lines)

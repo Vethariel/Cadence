@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_at_utc": "2026-05-30T18:22:26.390379+00:00",
+  "generated_at_utc": "2026-05-30T18:35:54.541197+00:00",
   "source": "derived_from_local_midi_metrics",
   "profiles": {
     "sparse_loop": {
@@ -41,6 +41,97 @@
           2.94,
           3.694
         ]
+      },
+      "rhythm_signature_16": [
+        0.2529,
+        0.0137,
+        0.0476,
+        0.0163,
+        0.1076,
+        0.0207,
+        0.064,
+        0.0337,
+        0.18,
+        0.0184,
+        0.0164,
+        0.0155,
+        0.1284,
+        0.017,
+        0.0278,
+        0.0401
+      ],
+      "melody_interval_histogram": {
+        "step_1_2": 0.1332,
+        "skip_3_4": 0.0855,
+        "leap_5_7": 0.0883,
+        "leap_8_plus": 0.5851,
+        "ascending_ratio": 0.441,
+        "descending_ratio": 0.4511
+      },
+      "role_register_ranges": {
+        "melody": {
+          "min": 37.0,
+          "max": 92.0
+        },
+        "pad": {
+          "min": 84.0,
+          "max": 95.0
+        }
+      },
+      "cadence_tendencies": {
+        "authentic_like": 0.0,
+        "plagal_like": 0.0,
+        "deceptive_like": 0.0,
+        "half_like": 0.0,
+        "suspended_like": 1.0
+      },
+      "layer_timeline_template": {
+        "melody": [
+          0.2025,
+          0.2378,
+          0.3061,
+          0.2536
+        ],
+        "pad": [
+          0.0833,
+          0.0833,
+          0.0833,
+          0.0833
+        ]
+      },
+      "harmonic_rhythm_deep": {
+        "chord_hold_beats_mean": 0.8869,
+        "chord_hold_beats_stdev": 0.5451,
+        "chord_change_density_curve_4q": [
+          2.3016,
+          3.0051,
+          2.1605,
+          4.6815
+        ]
+      },
+      "dynamics_profile": {
+        "velocity_mean": 87.1535,
+        "velocity_stdev": 11.027,
+        "dynamic_range_p90_p10": 31.0,
+        "accent_on_strong_beat_ratio": 0.2744
+      },
+      "motivicity_signature": {
+        "motif_repeat_ratio_4": 0.7148,
+        "top_interval_ngrams_4": [
+          "[0,-12,12,0]",
+          "[-12,12,0,-12]",
+          "[12,0,-12,12]",
+          "[0,0,0,0]",
+          "[-38,0,-12,50]",
+          "[0,-12,50,0]"
+        ],
+        "contour_hist": {
+          "ascending": 0.0067,
+          "descending": 0.0028,
+          "arch": 0.0317,
+          "zigzag": 0.2593,
+          "static": 0.6996
+        }
       },
       "style_cues": [
         "stack_medio_controlado",
@@ -90,6 +181,97 @@
           3.875
         ]
       },
+      "rhythm_signature_16": [
+        0.1578,
+        0.0269,
+        0.0706,
+        0.0455,
+        0.0807,
+        0.023,
+        0.0898,
+        0.0212,
+        0.1279,
+        0.0238,
+        0.0748,
+        0.0296,
+        0.0929,
+        0.0243,
+        0.0891,
+        0.0222
+      ],
+      "melody_interval_histogram": {
+        "step_1_2": 0.1728,
+        "skip_3_4": 0.0393,
+        "leap_5_7": 0.0633,
+        "leap_8_plus": 0.5814,
+        "ascending_ratio": 0.4441,
+        "descending_ratio": 0.4126
+      },
+      "role_register_ranges": {
+        "melody": {
+          "min": 42.0,
+          "max": 84.0
+        },
+        "bass": {
+          "min": 40.0,
+          "max": 50.0
+        }
+      },
+      "cadence_tendencies": {
+        "authentic_like": 0.3333,
+        "plagal_like": 0.0,
+        "deceptive_like": 0.0,
+        "half_like": 0.0,
+        "suspended_like": 0.6667
+      },
+      "layer_timeline_template": {
+        "melody": [
+          0.2201,
+          0.2552,
+          0.2548,
+          0.2699
+        ],
+        "bass": [
+          0.0702,
+          0.0877,
+          0.0877,
+          0.0877
+        ]
+      },
+      "harmonic_rhythm_deep": {
+        "chord_hold_beats_mean": 1.1671,
+        "chord_hold_beats_stdev": 0.8251,
+        "chord_change_density_curve_4q": [
+          5.3313,
+          7.1131,
+          6.3874,
+          7.0616
+        ]
+      },
+      "dynamics_profile": {
+        "velocity_mean": 76.4063,
+        "velocity_stdev": 4.4112,
+        "dynamic_range_p90_p10": 10.0,
+        "accent_on_strong_beat_ratio": 0.5037
+      },
+      "motivicity_signature": {
+        "motif_repeat_ratio_4": 0.991,
+        "top_interval_ngrams_4": [
+          "[-2,0,-1,0]",
+          "[0,-1,0,3]",
+          "[-29,29,-2,0]",
+          "[29,-2,0,-1]",
+          "[3,-29,29,-2]",
+          "[-1,-23,23,3]"
+        ],
+        "contour_hist": {
+          "ascending": 0.0066,
+          "descending": 0.0007,
+          "arch": 0.0034,
+          "zigzag": 0.3684,
+          "static": 0.6209
+        }
+      },
       "style_cues": [
         "stack_medio_controlado",
         "melodia_moderada",
@@ -138,6 +320,107 @@
           4.633
         ]
       },
+      "rhythm_signature_16": [
+        0.0855,
+        0.057,
+        0.0502,
+        0.0645,
+        0.0679,
+        0.0614,
+        0.0522,
+        0.0643,
+        0.0742,
+        0.0588,
+        0.0503,
+        0.066,
+        0.0708,
+        0.0623,
+        0.0507,
+        0.0642
+      ],
+      "melody_interval_histogram": {
+        "step_1_2": 0.0783,
+        "skip_3_4": 0.0703,
+        "leap_5_7": 0.161,
+        "leap_8_plus": 0.5797,
+        "ascending_ratio": 0.4468,
+        "descending_ratio": 0.4425
+      },
+      "role_register_ranges": {
+        "melody": {
+          "min": 34.33,
+          "max": 92.67
+        },
+        "bass": {
+          "min": 28.0,
+          "max": 49.0
+        },
+        "pad": {
+          "min": 60.0,
+          "max": 77.0
+        }
+      },
+      "cadence_tendencies": {
+        "authentic_like": 0.0,
+        "plagal_like": 0.0,
+        "deceptive_like": 0.0,
+        "half_like": 0.3333,
+        "suspended_like": 0.3333
+      },
+      "layer_timeline_template": {
+        "melody": [
+          0.1896,
+          0.2438,
+          0.2925,
+          0.2741
+        ],
+        "bass": [
+          0.174,
+          0.0975,
+          0.0619,
+          0.0
+        ],
+        "pad": [
+          0.1379,
+          0.1188,
+          0.0728,
+          0.0038
+        ]
+      },
+      "harmonic_rhythm_deep": {
+        "chord_hold_beats_mean": 0.3074,
+        "chord_hold_beats_stdev": 0.2111,
+        "chord_change_density_curve_4q": [
+          10.4722,
+          10.75,
+          7.4722,
+          5.3611
+        ]
+      },
+      "dynamics_profile": {
+        "velocity_mean": 110.0555,
+        "velocity_stdev": 7.4947,
+        "dynamic_range_p90_p10": 16.3333,
+        "accent_on_strong_beat_ratio": 0.9807
+      },
+      "motivicity_signature": {
+        "motif_repeat_ratio_4": 0.8403,
+        "top_interval_ngrams_4": [
+          "[-7,-5,17,-5]",
+          "[-19,-5,17,7]",
+          "[-5,17,-5,-7]",
+          "[17,-5,-7,-5]",
+          "[-5,-7,-5,17]",
+          "[-5,17,7,-19]"
+        ],
+        "contour_hist": {
+          "ascending": 0.0021,
+          "descending": 0.0031,
+          "arch": 0.0307,
+          "zigzag": 0.3298,
+          "static": 0.6344
+        }
+      },
       "style_cues": [
         "stack_denso_multicapa",
         "melodia_muy_activa",
@@ -183,6 +466,87 @@
           3.286,
           3.466
         ]
+      },
+      "rhythm_signature_16": [
+        0.1452,
+        0.0411,
+        0.0364,
+        0.071,
+        0.0654,
+        0.0411,
+        0.0814,
+        0.0432,
+        0.1144,
+        0.0398,
+        0.0355,
+        0.0467,
+        0.092,
+        0.0398,
+        0.0638,
+        0.0432
+      ],
+      "melody_interval_histogram": {
+        "step_1_2": 0.1106,
+        "skip_3_4": 0.0125,
+        "leap_5_7": 0.0914,
+        "leap_8_plus": 0.6707,
+        "ascending_ratio": 0.4975,
+        "descending_ratio": 0.3877
+      },
+      "role_register_ranges": {
+        "melody": {
+          "min": 32.5,
+          "max": 84.5
+        }
+      },
+      "cadence_tendencies": {
+        "authentic_like": 0.0,
+        "plagal_like": 0.0,
+        "deceptive_like": 0.0,
+        "half_like": 0.0,
+        "suspended_like": 1.0
+      },
+      "layer_timeline_template": {
+        "melody": [
+          0.2203,
+          0.2591,
+          0.2429,
+          0.2777
+        ]
+      },
+      "harmonic_rhythm_deep": {
+        "chord_hold_beats_mean": 1.2544,
+        "chord_hold_beats_stdev": 0.6992,
+        "chord_change_density_curve_4q": [
+          5.3636,
+          5.8864,
+          5.7728,
+          5.9091
+        ]
+      },
+      "dynamics_profile": {
+        "velocity_mean": 105.0,
+        "velocity_stdev": 0.0,
+        "dynamic_range_p90_p10": 0.0,
+        "accent_on_strong_beat_ratio": 1.0
+      },
+      "motivicity_signature": {
+        "motif_repeat_ratio_4": 0.9925,
+        "top_interval_ngrams_4": [
+          "[-24,24,-12,7]",
+          "[24,-12,7,0]",
+          "[-12,7,0,10]",
+          "[7,0,10,-29]",
+          "[0,10,-29,29]",
+          "[10,-29,29,-17]"
+        ],
+        "contour_hist": {
+          "ascending": 0.001,
+          "descending": 0.001,
+          "arch": 0.0043,
+          "zigzag": 0.4633,
+          "static": 0.5303
+        }
       },
       "style_cues": [
         "stack_compacto_o_sparse",
@@ -231,6 +595,107 @@
           5.181
         ]
       },
+      "rhythm_signature_16": [
+        0.11,
+        0.0542,
+        0.0583,
+        0.0659,
+        0.0646,
+        0.0535,
+        0.0608,
+        0.0608,
+        0.0794,
+        0.0522,
+        0.0584,
+        0.06,
+        0.0635,
+        0.0479,
+        0.0634,
+        0.0471
+      ],
+      "melody_interval_histogram": {
+        "step_1_2": 0.0505,
+        "skip_3_4": 0.0885,
+        "leap_5_7": 0.1334,
+        "leap_8_plus": 0.6417,
+        "ascending_ratio": 0.3871,
+        "descending_ratio": 0.5269
+      },
+      "role_register_ranges": {
+        "melody": {
+          "min": 34.0,
+          "max": 100.0
+        },
+        "bass": {
+          "min": 28.0,
+          "max": 49.0
+        },
+        "pad": {
+          "min": 60.0,
+          "max": 77.0
+        }
+      },
+      "cadence_tendencies": {
+        "authentic_like": 0.0,
+        "plagal_like": 0.0,
+        "deceptive_like": 0.5,
+        "half_like": 0.5,
+        "suspended_like": 0.0
+      },
+      "layer_timeline_template": {
+        "melody": [
+          0.1656,
+          0.2591,
+          0.2821,
+          0.2933
+        ],
+        "bass": [
+          0.261,
+          0.1462,
+          0.0928,
+          0.0
+        ],
+        "pad": [
+          0.2069,
+          0.1782,
+          0.1092,
+          0.0057
+        ]
+      },
+      "harmonic_rhythm_deep": {
+        "chord_hold_beats_mean": 0.501,
+        "chord_hold_beats_stdev": 0.6113,
+        "chord_change_density_curve_4q": [
+          10.9583,
+          26.825,
+          16.5333,
+          4.3167
+        ]
+      },
+      "dynamics_profile": {
+        "velocity_mean": 112.3364,
+        "velocity_stdev": 23.2773,
+        "dynamic_range_p90_p10": 51.5,
+        "accent_on_strong_beat_ratio": 0.9225
+      },
+      "motivicity_signature": {
+        "motif_repeat_ratio_4": 0.7816,
+        "top_interval_ngrams_4": [
+          "[12,0,-12,12]",
+          "[-5,5,-12,12]",
+          "[5,0,0,0]",
+          "[0,0,0,0]",
+          "[-12,12,-2,-12]",
+          "[-7,-3,15,-3]"
+        ],
+        "contour_hist": {
+          "ascending": 0.0039,
+          "descending": 0.0063,
+          "arch": 0.0353,
+          "zigzag": 0.2821,
+          "static": 0.6724
+        }
+      },
       "style_cues": [
         "stack_denso_multicapa",
         "melodia_muy_activa",
@@ -278,6 +743,97 @@
           4.122
         ]
       },
+      "rhythm_signature_16": [
+        0.2597,
+        0.0155,
+        0.0865,
+        0.0021,
+        0.1186,
+        0.0072,
+        0.1307,
+        0.0037,
+        0.0888,
+        0.0066,
+        0.0928,
+        0.0021,
+        0.1076,
+        0.0104,
+        0.0668,
+        0.0009
+      ],
+      "melody_interval_histogram": {
+        "step_1_2": 0.1862,
+        "skip_3_4": 0.0905,
+        "leap_5_7": 0.1949,
+        "leap_8_plus": 0.4224,
+        "ascending_ratio": 0.5105,
+        "descending_ratio": 0.3836
+      },
+      "role_register_ranges": {
+        "melody": {
+          "min": 44.33,
+          "max": 79.67
+        },
+        "bass": {
+          "min": 29.0,
+          "max": 45.0
+        }
+      },
+      "cadence_tendencies": {
+        "authentic_like": 0.0,
+        "plagal_like": 0.0,
+        "deceptive_like": 0.0,
+        "half_like": 0.0,
+        "suspended_like": 0.6667
+      },
+      "layer_timeline_template": {
+        "melody": [
+          0.1965,
+          0.2505,
+          0.2094,
+          0.3436
+        ],
+        "bass": [
+          0.0858,
+          0.0897,
+          0.07,
+          0.0878
+        ]
+      },
+      "harmonic_rhythm_deep": {
+        "chord_hold_beats_mean": 1.035,
+        "chord_hold_beats_stdev": 0.4602,
+        "chord_change_density_curve_4q": [
+          2.093,
+          2.093,
+          1.0097,
+          2.0601
+        ]
+      },
+      "dynamics_profile": {
+        "velocity_mean": 46.5297,
+        "velocity_stdev": 9.906,
+        "dynamic_range_p90_p10": 24.3333,
+        "accent_on_strong_beat_ratio": 0.0
+      },
+      "motivicity_signature": {
+        "motif_repeat_ratio_4": 0.6115,
+        "top_interval_ngrams_4": [
+          "[0,0,7,0]",
+          "[0,7,0,0]",
+          "[7,0,0,0]",
+          "[-7,0,0,7]",
+          "[23,1,-5,4]",
+          "[1,-5,4,1]"
+        ],
+        "contour_hist": {
+          "ascending": 0.0026,
+          "descending": 0.0028,
+          "arch": 0.0193,
+          "zigzag": 0.3036,
+          "static": 0.6717
+        }
+      },
       "style_cues": [
         "stack_medio_controlado",
         "melodia_moderada",
@@ -323,6 +879,87 @@
           3.785,
           3.785
         ]
+      },
+      "rhythm_signature_16": [
+        0.0919,
+        0.0693,
+        0.0576,
+        0.0576,
+        0.0668,
+        0.0568,
+        0.0685,
+        0.066,
+        0.0585,
+        0.0501,
+        0.0602,
+        0.066,
+        0.066,
+        0.061,
+        0.0468,
+        0.0568
+      ],
+      "melody_interval_histogram": {
+        "step_1_2": 0.3333,
+        "skip_3_4": 0.0702,
+        "leap_5_7": 0.1404,
+        "leap_8_plus": 0.3509,
+        "ascending_ratio": 0.4912,
+        "descending_ratio": 0.4035
+      },
+      "role_register_ranges": {
+        "melody": {
+          "min": 29.0,
+          "max": 86.0
+        }
+      },
+      "cadence_tendencies": {
+        "authentic_like": 0.0,
+        "plagal_like": 0.0,
+        "deceptive_like": 0.0,
+        "half_like": 0.0,
+        "suspended_like": 1.0
+      },
+      "layer_timeline_template": {
+        "melody": [
+          0.2331,
+          0.2565,
+          0.2247,
+          0.2857
+        ]
+      },
+      "harmonic_rhythm_deep": {
+        "chord_hold_beats_mean": 0.3593,
+        "chord_hold_beats_stdev": 0.3773,
+        "chord_change_density_curve_4q": [
+          16.375,
+          18.4375,
+          15.75,
+          20.625
+        ]
+      },
+      "dynamics_profile": {
+        "velocity_mean": 50.0,
+        "velocity_stdev": 0.0,
+        "dynamic_range_p90_p10": 0.0,
+        "accent_on_strong_beat_ratio": 0.0
+      },
+      "motivicity_signature": {
+        "motif_repeat_ratio_4": 0.9259,
+        "top_interval_ngrams_4": [
+          "[0,-12,-15,-2]",
+          "[-12,-15,-2,7]",
+          "[-15,-2,7,0]",
+          "[-2,7,0,2]",
+          "[7,0,2,1]",
+          "[0,2,1,-15]"
+        ],
+        "contour_hist": {
+          "ascending": 0.037,
+          "descending": 0.0,
+          "arch": 0.0741,
+          "zigzag": 0.1852,
+          "static": 0.7037
+        }
       },
       "style_cues": [
         "stack_compacto_o_sparse",
@@ -371,6 +1008,87 @@
           2.979
         ]
       },
+      "rhythm_signature_16": [
+        0.1415,
+        0.0299,
+        0.0636,
+        0.029,
+        0.1172,
+        0.0299,
+        0.0764,
+        0.0306,
+        0.1128,
+        0.0331,
+        0.0786,
+        0.0221,
+        0.1192,
+        0.0228,
+        0.0721,
+        0.0212
+      ],
+      "melody_interval_histogram": {
+        "step_1_2": 0.0215,
+        "skip_3_4": 0.0175,
+        "leap_5_7": 0.3121,
+        "leap_8_plus": 0.4227,
+        "ascending_ratio": 0.3188,
+        "descending_ratio": 0.455
+      },
+      "role_register_ranges": {
+        "melody": {
+          "min": 24.0,
+          "max": 72.5
+        }
+      },
+      "cadence_tendencies": {
+        "authentic_like": 0.0,
+        "plagal_like": 0.0,
+        "deceptive_like": 0.0,
+        "half_like": 0.0,
+        "suspended_like": 0.5
+      },
+      "layer_timeline_template": {
+        "melody": [
+          0.2019,
+          0.2686,
+          0.2278,
+          0.3017
+        ]
+      },
+      "harmonic_rhythm_deep": {
+        "chord_hold_beats_mean": 0.125,
+        "chord_hold_beats_stdev": 0.0,
+        "chord_change_density_curve_4q": [
+          0.0,
+          0.1666,
+          0.0833,
+          0.1666
+        ]
+      },
+      "dynamics_profile": {
+        "velocity_mean": 117.8546,
+        "velocity_stdev": 3.3661,
+        "dynamic_range_p90_p10": 5.0,
+        "accent_on_strong_beat_ratio": 1.0
+      },
+      "motivicity_signature": {
+        "motif_repeat_ratio_4": 0.9232,
+        "top_interval_ngrams_4": [
+          "[0,-12,12,0]",
+          "[0,0,0,-12]",
+          "[12,0,0,0]",
+          "[-12,12,0,12]",
+          "[12,0,12,0]",
+          "[0,-24,24,0]"
+        ],
+        "contour_hist": {
+          "ascending": 0.0031,
+          "descending": 0.0,
+          "arch": 0.0026,
+          "zigzag": 0.2063,
+          "static": 0.7879
+        }
+      },
       "style_cues": [
         "stack_medio_controlado",
         "melodia_moderada",
@@ -417,6 +1135,87 @@
           3.943,
           4.075
         ]
+      },
+      "rhythm_signature_16": [
+        0.1804,
+        0.0041,
+        0.1075,
+        0.0035,
+        0.125,
+        0.0029,
+        0.1063,
+        0.0047,
+        0.129,
+        0.0035,
+        0.0988,
+        0.0054,
+        0.1321,
+        0.0059,
+        0.088,
+        0.0029
+      ],
+      "melody_interval_histogram": {
+        "step_1_2": 0.0605,
+        "skip_3_4": 0.0336,
+        "leap_5_7": 0.1398,
+        "leap_8_plus": 0.3761,
+        "ascending_ratio": 0.2668,
+        "descending_ratio": 0.3432
+      },
+      "role_register_ranges": {
+        "melody": {
+          "min": 26.0,
+          "max": 97.5
+        }
+      },
+      "cadence_tendencies": {
+        "authentic_like": 0.0,
+        "plagal_like": 0.0,
+        "deceptive_like": 0.0,
+        "half_like": 0.0,
+        "suspended_like": 1.0
+      },
+      "layer_timeline_template": {
+        "melody": [
+          0.2577,
+          0.3391,
+          0.2571,
+          0.146
+        ]
+      },
+      "harmonic_rhythm_deep": {
+        "chord_hold_beats_mean": 2.0138,
+        "chord_hold_beats_stdev": 1.7864,
+        "chord_change_density_curve_4q": [
+          3.1183,
+          2.8653,
+          3.0606,
+          2.4924
+        ]
+      },
+      "dynamics_profile": {
+        "velocity_mean": 56.3416,
+        "velocity_stdev": 13.041,
+        "dynamic_range_p90_p10": 34.5,
+        "accent_on_strong_beat_ratio": 0.1015
+      },
+      "motivicity_signature": {
+        "motif_repeat_ratio_4": 0.5344,
+        "top_interval_ngrams_4": [
+          "[0,0,0,0]",
+          "[0,0,0,-4]",
+          "[0,0,-4,0]",
+          "[0,-4,0,0]",
+          "[-4,0,0,0]",
+          "[0,0,0,2]"
+        ],
+        "contour_hist": {
+          "ascending": 0.0017,
+          "descending": 0.0065,
+          "arch": 0.0106,
+          "zigzag": 0.246,
+          "static": 0.7352
+        }
       },
       "style_cues": [
         "stack_medio_controlado",
@@ -465,6 +1264,97 @@
           4.541
         ]
       },
+      "rhythm_signature_16": [
+        0.3238,
+        0.0382,
+        0.0282,
+        0.0261,
+        0.0684,
+        0.0275,
+        0.028,
+        0.0275,
+        0.1693,
+        0.0303,
+        0.0282,
+        0.0317,
+        0.0821,
+        0.0296,
+        0.0296,
+        0.0317
+      ],
+      "melody_interval_histogram": {
+        "step_1_2": 0.1257,
+        "skip_3_4": 0.1387,
+        "leap_5_7": 0.1812,
+        "leap_8_plus": 0.4736,
+        "ascending_ratio": 0.4625,
+        "descending_ratio": 0.4567
+      },
+      "role_register_ranges": {
+        "melody": {
+          "min": 37.5,
+          "max": 95.0
+        },
+        "pad": {
+          "min": 41.0,
+          "max": 81.5
+        }
+      },
+      "cadence_tendencies": {
+        "authentic_like": 0.5,
+        "plagal_like": 0.0,
+        "deceptive_like": 0.0,
+        "half_like": 0.0,
+        "suspended_like": 0.0
+      },
+      "layer_timeline_template": {
+        "melody": [
+          0.231,
+          0.2468,
+          0.2774,
+          0.2448
+        ],
+        "pad": [
+          0.0621,
+          0.2969,
+          0.321,
+          0.3201
+        ]
+      },
+      "harmonic_rhythm_deep": {
+        "chord_hold_beats_mean": 1.1515,
+        "chord_hold_beats_stdev": 0.5674,
+        "chord_change_density_curve_4q": [
+          1.25,
+          1.6945,
+          1.6666,
+          1.9445
+        ]
+      },
+      "dynamics_profile": {
+        "velocity_mean": 88.3307,
+        "velocity_stdev": 24.7164,
+        "dynamic_range_p90_p10": 57.5,
+        "accent_on_strong_beat_ratio": 0.6008
+      },
+      "motivicity_signature": {
+        "motif_repeat_ratio_4": 0.835,
+        "top_interval_ngrams_4": [
+          "[-5,12,-5,-2]",
+          "[2,-12,5,5]",
+          "[-2,12,-7,-3]",
+          "[12,-5,-2,12]",
+          "[-5,-2,12,-8]",
+          "[-2,12,-8,-2]"
+        ],
+        "contour_hist": {
+          "ascending": 0.0061,
+          "descending": 0.0101,
+          "arch": 0.0159,
+          "zigzag": 0.3825,
+          "static": 0.5853
+        }
+      },
       "style_cues": [
         "stack_denso_multicapa",
         "melodia_muy_activa",
@@ -510,6 +1400,97 @@
           3.053,
           3.781
         ]
+      },
+      "rhythm_signature_16": [
+        0.2767,
+        0.0278,
+        0.0327,
+        0.0334,
+        0.0528,
+        0.0334,
+        0.0394,
+        0.0112,
+        0.2372,
+        0.0112,
+        0.0362,
+        0.0334,
+        0.0703,
+        0.0334,
+        0.0376,
+        0.0334
+      ],
+      "melody_interval_histogram": {
+        "step_1_2": 0.1345,
+        "skip_3_4": 0.1674,
+        "leap_5_7": 0.1529,
+        "leap_8_plus": 0.3968,
+        "ascending_ratio": 0.4582,
+        "descending_ratio": 0.3934
+      },
+      "role_register_ranges": {
+        "melody": {
+          "min": 39.5,
+          "max": 85.5
+        },
+        "pad": {
+          "min": 42.0,
+          "max": 73.0
+        }
+      },
+      "cadence_tendencies": {
+        "authentic_like": 0.0,
+        "plagal_like": 0.0,
+        "deceptive_like": 0.5,
+        "half_like": 0.0,
+        "suspended_like": 0.5
+      },
+      "layer_timeline_template": {
+        "melody": [
+          0.2079,
+          0.3699,
+          0.2799,
+          0.1422
+        ],
+        "pad": [
+          0.1052,
+          0.1052,
+          0.1184,
+          0.1711
+        ]
+      },
+      "harmonic_rhythm_deep": {
+        "chord_hold_beats_mean": 1.3955,
+        "chord_hold_beats_stdev": 0.8606,
+        "chord_change_density_curve_4q": [
+          3.375,
+          4.5916,
+          3.7375,
+          2.6959
+        ]
+      },
+      "dynamics_profile": {
+        "velocity_mean": 100.5121,
+        "velocity_stdev": 15.3537,
+        "dynamic_range_p90_p10": 42.0,
+        "accent_on_strong_beat_ratio": 0.5717
+      },
+      "motivicity_signature": {
+        "motif_repeat_ratio_4": 0.5279,
+        "top_interval_ngrams_4": [
+          "[0,2,0,0]",
+          "[0,-2,0,0]",
+          "[0,0,0,0]",
+          "[7,-14,4,8]",
+          "[5,-12,4,8]",
+          "[-15,7,5,-9]"
+        ],
+        "contour_hist": {
+          "ascending": 0.0006,
+          "descending": 0.0,
+          "arch": 0.0305,
+          "zigzag": 0.3288,
+          "static": 0.6401
+        }
       },
       "style_cues": [
         "stack_medio_controlado",
@@ -561,6 +1542,107 @@
           2.652,
           5.244
         ]
+      },
+      "rhythm_signature_16": [
+        0.1797,
+        0.0258,
+        0.065,
+        0.0287,
+        0.1095,
+        0.0298,
+        0.063,
+        0.0315,
+        0.1405,
+        0.0243,
+        0.0493,
+        0.025,
+        0.1198,
+        0.0318,
+        0.0494,
+        0.027
+      ],
+      "melody_interval_histogram": {
+        "step_1_2": 0.1217,
+        "skip_3_4": 0.1043,
+        "leap_5_7": 0.1618,
+        "leap_8_plus": 0.3695,
+        "ascending_ratio": 0.3935,
+        "descending_ratio": 0.3637
+      },
+      "role_register_ranges": {
+        "melody": {
+          "min": 37.33,
+          "max": 89.17
+        },
+        "bass": {
+          "min": 30.0,
+          "max": 53.0
+        },
+        "pad": {
+          "min": 50.0,
+          "max": 73.67
+        }
+      },
+      "cadence_tendencies": {
+        "authentic_like": 0.0,
+        "plagal_like": 0.0,
+        "deceptive_like": 0.0,
+        "half_like": 0.1667,
+        "suspended_like": 0.8333
+      },
+      "layer_timeline_template": {
+        "melody": [
+          0.2435,
+          0.248,
+          0.274,
+          0.2344
+        ],
+        "bass": [
+          0.037,
+          0.0394,
+          0.0474,
+          0.0429
+        ],
+        "pad": [
+          0.1343,
+          0.1151,
+          0.126,
+          0.1246
+        ]
+      },
+      "harmonic_rhythm_deep": {
+        "chord_hold_beats_mean": 0.9484,
+        "chord_hold_beats_stdev": 0.7621,
+        "chord_change_density_curve_4q": [
+          13.8255,
+          14.3279,
+          12.9183,
+          15.8546
+        ]
+      },
+      "dynamics_profile": {
+        "velocity_mean": 101.6262,
+        "velocity_stdev": 7.1679,
+        "dynamic_range_p90_p10": 18.1667,
+        "accent_on_strong_beat_ratio": 0.8277
+      },
+      "motivicity_signature": {
+        "motif_repeat_ratio_4": 0.8445,
+        "top_interval_ngrams_4": [
+          "[0,0,0,0]",
+          "[7,-7,7,-7]",
+          "[-7,7,-7,7]",
+          "[4,-4,4,-4]",
+          "[-7,7,-7,0]",
+          "[12,-12,12,-12]"
+        ],
+        "contour_hist": {
+          "ascending": 0.029,
+          "descending": 0.0014,
+          "arch": 0.0141,
+          "zigzag": 0.1882,
+          "static": 0.7672
+        }
       },
       "style_cues": [
         "stack_denso_multicapa",

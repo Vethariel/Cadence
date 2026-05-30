@@ -2,7 +2,20 @@ import { create } from 'zustand'
 import { fetchProductions, fetchProduction } from './api'
 import { uid } from './uid'
 
+function buildTrackMutes(rsong) {
+  const trackMutes = {}
+  for (const t of rsong?.tracks || []) {
+    const id = t.instrument_id || t.id
+    trackMutes[id] = false
+  }
+  return trackMutes
+}
+
 export const useCadenceStore = create((set, get) => ({
+  // App shell
+  appScreen: 'landing', // 'landing' | 'studio'
+  leftPaneView: 'chat', // 'chat' | 'productions'
+
   // Chat
   messages: [],
   isGenerating: false,
@@ -13,41 +26,45 @@ export const useCadenceStore = create((set, get) => ({
   currentProductionId: null,
 
   // Mis producciones
-  view: 'chat', // 'chat' | 'productions'
   productions: [],
   productionsLoading: false,
   productionsError: null,
 
   // Reproductor
   isPlaying: false,
+  isPaused: false,
   isAudioLoading: false,
-  playbackSource: 'rsong', // 'rsong' | 'midi'
   currentTimeMs: 0,
   activeSection: null,
   /** instrument_id → true si la pista está silenciada */
   trackMutes: {},
+
+  enterStudio: () => set({ appScreen: 'studio' }),
+  showLanding: () => set({ appScreen: 'landing' }),
+  setLeftPaneView: (leftPaneView) => set({ leftPaneView }),
 
   addMessage: (role, content) =>
     set((s) => ({
       messages: [...s.messages, { role, content, id: uid() }],
     })),
 
+  addMessageWithMeta: (role, content, extra = {}) =>
+    set((s) => ({
+      messages: [...s.messages, { role, content, id: uid(), ...extra }],
+    })),
+
   setGenerating: (v) => set({ isGenerating: v }),
 
-  setView: (view) => set({ view }),
-
   setResult: (rsong, meta, productionId = null) => {
-    const trackMutes = {}
-    for (const t of rsong?.tracks || []) {
-      const id = t.instrument_id || t.id
-      trackMutes[id] = false
-    }
+    const trackMutes = buildTrackMutes(rsong)
     return set({
       rsong,
       meta,
       currentProductionId: productionId,
-      playbackSource: 'rsong',
       trackMutes,
+      currentTimeMs: 0,
+      activeSection: null,
+      isPaused: false,
     })
   },
 
@@ -66,25 +83,29 @@ export const useCadenceStore = create((set, get) => ({
     try {
       const rsong = await fetchProduction(filename)
       const header = rsong.header || {}
-      const trackMutes = {}
-      for (const t of rsong?.tracks || []) {
-        const id = t.instrument_id || t.id
-        trackMutes[id] = false
-      }
+      const trackMutes = buildTrackMutes(rsong)
       set({
         rsong,
         meta: {
+          title: header.title,
           bpm: header.bpm,
           key: header.key,
+          mode: header.mode,
+          meter: header.meter,
+          archetype: rsong.game_meta?.policy?.archetype,
+          pattern_id: rsong.game_meta?.policy?.pattern_id,
+          active_instruments: rsong.game_meta?.arrangement?.active_instruments || [],
           sections: rsong.game_meta?.sections || [],
           duration_ms: header.duration_ms,
           validation_score: rsong.validation?.score,
+          knowledge_level: rsong.game_meta?.knowledge_level,
         },
         currentProductionId: filename,
-        playbackSource: 'rsong',
         trackMutes,
         productionsLoading: false,
-        view: 'chat',
+        currentTimeMs: 0,
+        activeSection: null,
+        isPaused: false,
       })
       return true
     } catch (e) {
@@ -94,10 +115,9 @@ export const useCadenceStore = create((set, get) => ({
   },
 
   setPlaying: (v) => set({ isPlaying: v }),
+  setPaused: (v) => set({ isPaused: v }),
 
   setAudioLoading: (v) => set({ isAudioLoading: v }),
-
-  setPlaybackSource: (playbackSource) => set({ playbackSource }),
 
   toggleTrackMute: (trackId) => set((s) => ({
     trackMutes: {
@@ -132,6 +152,7 @@ export const useCadenceStore = create((set, get) => ({
 
   reset: () => set({
     isPlaying: false,
+    isPaused: false,
     isAudioLoading: false,
     currentTimeMs: 0,
     activeSection: null,

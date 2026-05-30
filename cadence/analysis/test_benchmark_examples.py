@@ -83,6 +83,50 @@ def test_inspiration_profiles_cover_all_composition_archetypes():
     print("✓ test_inspiration_profiles_cover_all_composition_archetypes OK")
 
 
+def test_inspiration_profiles_include_extended_signals():
+    data = load_inspiration_profiles()
+    profiles = data.get("profiles", {})
+    for archetype, p in profiles.items():
+        rhythm = p.get("rhythm_signature_16")
+        assert isinstance(rhythm, list) and len(rhythm) == 16, f"{archetype}: rhythm_signature_16 inválido"
+        intervals = p.get("melody_interval_histogram", {})
+        for k in ("step_1_2", "skip_3_4", "leap_5_7", "leap_8_plus", "ascending_ratio", "descending_ratio"):
+            assert k in intervals, f"{archetype}: falta {k} en melody_interval_histogram"
+        assert "cadence_tendencies" in p, f"{archetype}: falta cadence_tendencies"
+        assert "layer_timeline_template" in p, f"{archetype}: falta layer_timeline_template"
+        assert "role_register_ranges" in p, f"{archetype}: falta role_register_ranges"
+        assert "harmonic_rhythm_deep" in p, f"{archetype}: falta harmonic_rhythm_deep"
+        assert "dynamics_profile" in p, f"{archetype}: falta dynamics_profile"
+        assert "motivicity_signature" in p, f"{archetype}: falta motivicity_signature"
+
+        harmonic = p["harmonic_rhythm_deep"]
+        assert harmonic.get("chord_hold_beats_mean", 0) > 0 or any(
+            float(x) > 0 for x in harmonic.get("chord_change_density_curve_4q", [])
+        ), f"{archetype}: harmonic_rhythm_deep sin señal útil"
+
+        dynamics = p["dynamics_profile"]
+        assert dynamics.get("velocity_mean", 0) > 0, f"{archetype}: dynamics_profile sin velocidad"
+
+        motivic = p["motivicity_signature"]
+        assert motivic.get("top_interval_ngrams_4"), f"{archetype}: motivicidad sin ngrams"
+
+        layer_template = p["layer_timeline_template"]
+        assert any(
+            any(float(v) > 0 for v in vec)
+            for vec in layer_template.values()
+            if isinstance(vec, list)
+        ), f"{archetype}: layer_timeline_template no aporta"
+
+    catalog = format_inspiration_profiles_for_llm()
+    assert "acentos_16" in catalog
+    assert "intervalos:" in catalog
+    assert "cadencias_tendencia:" in catalog
+    assert "ritmo_armonico_profundo:" in catalog
+    assert "dinamica:" in catalog
+    assert "motivicidad:" in catalog
+    print("✓ test_inspiration_profiles_include_extended_signals OK")
+
+
 if __name__ == "__main__":
     test_catalog_alignment()
     test_each_prompt_infers_expected_archetype()
@@ -91,4 +135,5 @@ if __name__ == "__main__":
     test_llm_inspiration_catalog_includes_profiles()
     test_validate_prompt_catalog_without_midi_runtime_dependency()
     test_inspiration_profiles_cover_all_composition_archetypes()
+    test_inspiration_profiles_include_extended_signals()
     print("\n✓ All benchmark example tests passed")
