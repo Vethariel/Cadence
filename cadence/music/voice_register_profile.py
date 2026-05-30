@@ -143,11 +143,17 @@ class VoiceRegisterProfile:
                 return 0.20 if uc in ("loop", "cutscene") else 0.15
             if intent.density < 0.35:
                 return 0.35
+        if self.composition_archetype == "orchestral_boss":
             if intent.narrative_role in ("climax", "tension"):
-                return 0.18 if energy_level >= 5 else 0.22
+                return 0.22 if energy_level >= 5 else 0.28
             if intent.density >= 0.7:
-                return 0.20
-            return 0.25
+                return 0.25
+            return 0.32
+        if intent.narrative_role in ("climax", "tension"):
+            return 0.18 if energy_level >= 5 else 0.22
+        if intent.density >= 0.7:
+            return 0.20
+        return 0.25
         uc = (use_case or "game").lower()
         if intent is None:
             return 0.15 if uc in ("loop", "cutscene") else 0.12

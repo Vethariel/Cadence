@@ -1,5 +1,9 @@
 """Tests de perfiles de benchmark por estilo."""
 
+import pytest
+
+pytestmark = pytest.mark.benchmark
+
 from cadence.analysis.benchmark_profiles import (
     ARCHETYPE_DEFS,
     build_style_profiles,

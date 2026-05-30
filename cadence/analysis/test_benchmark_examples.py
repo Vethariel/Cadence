@@ -1,5 +1,9 @@
 """Validación del catálogo de prompts ↔ arquetipos MIDI."""
 
+import pytest
+
+pytestmark = pytest.mark.benchmark
+
 from cadence.analysis.benchmark_examples import (
     export_title_for_prompt,
     load_benchmark_prompts,

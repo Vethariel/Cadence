@@ -1,5 +1,6 @@
 """FX de transición — risers y sweeps en último compás de sección."""
 
+from cadence.music.meter_theory import ms_per_step, steps_per_bar as meter_steps_per_bar
 from cadence.instruments.context import ComposeContext
 from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.music.narrative_contract import section_intent_map_from_state
@@ -9,9 +10,6 @@ from cadence.schemas.song_state import RhythmEvent, Track
 FX_TRANSITIONS = {"riser", "filter_sweep", "pickup"}
 DRUM_MIDI = {"snare": 38, "hihat": 42}
 
-
-def _ms_per_step(bpm: int) -> float:
-    return (60000 / bpm) / 4
 
 
 def _compose_fx_riser(ctx: ComposeContext) -> Track | None:
@@ -23,8 +21,8 @@ def _compose_fx_riser(ctx: ComposeContext) -> Track | None:
     seed = seed_for_state(ctx.state, "fx_riser") or ctx.state.get("generation_seed", 0)
     intent_map = section_intent_map_from_state(ctx.state, context="fx_riser")
     active = set(ctx.active_sections())
-    step_ms = _ms_per_step(ctx.bpm)
-    steps_per_bar = 16
+    step_ms = ms_per_step(ctx.bpm, ctx.time_signature)
+    steps_per_bar = meter_steps_per_bar(ctx.time_signature)
     events: list[RhythmEvent] = []
     current_t = 0.0
     beat_index = 0

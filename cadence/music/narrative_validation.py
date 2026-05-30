@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from cadence.music.harmony_theory import KEY_MIDI, SCALES
+from cadence.music.scale_theory import KEY_MIDI_ROOT, scale_semitones
 from cadence.schemas.song_state import (
     NarrativeAnchors,
     NarrativeContract,
@@ -123,8 +123,8 @@ def _pitch_matches_motif_degree(
     mode: str,
     motif_degrees: list[int],
 ) -> bool:
-    root = KEY_MIDI.get(key, 60)
-    scale = SCALES.get(mode, SCALES["minor"])
+    root = KEY_MIDI_ROOT.get(key, 60)
+    scale = scale_semitones(mode)
     rel = (pitch - root) % 12
     motif_pcs = {scale[d % 7] for d in motif_degrees}
     return rel in motif_pcs

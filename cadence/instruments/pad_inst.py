@@ -27,6 +27,7 @@ def _compose_pad(ctx: ComposeContext) -> Track | None:
         harmony=harmony,
         intent_map=section_intent_map_from_state(ctx.state, context="pad"),
         dev_map=section_development_map(development),
+        time_signature=ctx.time_signature,
     )
     # Filtrar eventos a secciones activas
     events = [e for e in track.events if e.section in active]

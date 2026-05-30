@@ -161,9 +161,6 @@ def test_filter_events_by_schedule():
 def test_echo_synth_from_melody():
     state = _boss_fight_state()
     state["strategies"] = GenerationStrategies(generation_seed=42)
-    state["technical_proposal"] = state["technical_proposal"].model_copy(
-        update={"genre_tags": ["orchestral", "cinematic"]},
-    )
     state["harmony"] = harmony_planner_node(state)["harmony"]
     state["arrangement"] = arrangement_planner_node(state)["arrangement"]
     state["tracks"] = [

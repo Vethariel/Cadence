@@ -63,11 +63,13 @@ def _compute_cue_points(state: SongState) -> list[dict]:
     from cadence.music.development_theory import section_development_map
     from cadence.music.segment_variation import segment_cue_label
 
+    from cadence.music.meter_theory import beats_per_bar, ms_per_bar as meter_ms_per_bar
+
     structure = state["structure"]
     proposal = state.get("technical_proposal")
     bpm = proposal.bpm if proposal else 120
-    beats_per_bar = 4
-    ms_per_bar = (60000 / bpm) * beats_per_bar
+    ts = list(proposal.time_signature) if proposal else [4, 4]
+    ms_per_bar = meter_ms_per_bar(bpm, ts)
 
     dev_map = section_development_map(state.get("development"))
     cue_points: list[dict] = []
@@ -102,7 +104,10 @@ def _compute_loop_point(state: SongState) -> int:
     structure = state["structure"]
     proposal = state.get("technical_proposal")
     bpm = proposal.bpm if proposal else 120
-    ms_per_bar = (60000 / bpm) * 4
+    ts = list(proposal.time_signature) if proposal else [4, 4]
+    from cadence.music.meter_theory import ms_per_bar as meter_ms_per_bar
+
+    ms_per_bar = meter_ms_per_bar(bpm, ts)
 
     loop_candidates = {"chorus", "drop", "verse", "loop"}
     current_ms = 0
@@ -135,6 +140,7 @@ def _build_rsong(state: SongState) -> dict:
     section_alignment = state.get("section_alignment")
     narrative_anchors = state.get("narrative_anchors")
     creative_variation = state.get("creative_variation")
+    creative_brief = state.get("creative_brief")
     node_seeds = state.get("node_seeds")
 
     profile = state.get("style_profile")
@@ -183,6 +189,14 @@ def _build_rsong(state: SongState) -> dict:
             "energy_level": energy_level,
             "hit_objects_hint": intent.use_case in ("game", "loop"),
             "sections": structure.sections,
+            "bars_per_section": dict(structure.bars_per_section),
+            **(
+                {
+                    "structure_form": proposal.structure_form,
+                }
+                if proposal and proposal.structure_form
+                else {}
+            ),
             **(
                 {
                     "narrative_contract": narrative_contract.model_dump(),
@@ -202,6 +216,11 @@ def _build_rsong(state: SongState) -> dict:
                     "creative_variation": creative_variation.model_dump(),
                 }
                 if creative_variation
+                else {}
+            ),
+            **(
+                {"creative_brief": creative_brief.model_dump()}
+                if creative_brief
                 else {}
             ),
             **(

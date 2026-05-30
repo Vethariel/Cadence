@@ -33,6 +33,7 @@ def post_process_node(state: SongState) -> dict:
     narrative = state.get("narrative")
     development = state.get("development")
     bpm = proposal.bpm if proposal else 120
+    time_signature = list(proposal.time_signature) if proposal else [4, 4]
     seed = seed_for_state(state, "humanize") or (
         development.generation_seed
         if development
@@ -45,11 +46,13 @@ def post_process_node(state: SongState) -> dict:
     intent_map = contract_section_intent_map(
         narrative, state.get("narrative_contract"), context="post_process", state=state,
     )
-    tracks = apply_crescendo(tracks, structure, bpm, intent_map)
+    tracks = apply_crescendo(tracks, structure, bpm, intent_map, time_signature)
 
     repair_actions = state.get("repair_actions") or []
     if "recalc_dynamic_range" in repair_actions:
-        tracks = apply_repair_dynamic_range(tracks, structure, bpm, intent_map)
+        tracks = apply_repair_dynamic_range(
+            tracks, structure, bpm, intent_map, time_signature=time_signature,
+        )
     if "adjust_section_intensity" in repair_actions:
         tracks = apply_repair_intensity_arc(tracks, structure, bpm, intent_map)
 

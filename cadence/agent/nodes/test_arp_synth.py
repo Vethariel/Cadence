@@ -86,10 +86,16 @@ def test_registry_has_arp_synth():
 
 
 def test_arp_pattern_from_seed():
-    assert pattern_for_seed(0) == "up"
-    assert pattern_for_seed(1) == "down"
-    assert pattern_for_seed(2) == "pingpong"
-    assert pattern_for_seed(3) == "up"
+    from cadence.music.arp_patterns import ARP_PATTERNS
+    from cadence.music.pattern_registry import pattern_family
+
+    for seed in (0, 1, 2, 3):
+        pid = pattern_for_seed(seed)
+        assert pid in ARP_PATTERNS
+        assert pattern_family(pid) in {
+            "up", "down", "pingpong", "updown", "cascade", "broken",
+            "syncopated", "octave", "triplet", "sixteenth", "staccato", "spread",
+        }
     print("✓ test_arp_pattern_from_seed OK")
 
 

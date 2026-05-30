@@ -1,5 +1,6 @@
 """Stabs de acorde en offbeats — capa determinista de densidad armónica."""
 
+from cadence.music.meter_theory import ms_per_step, steps_per_bar as meter_steps_per_bar
 from cadence.instruments.context import ComposeContext
 from cadence.music.narrative_contract import section_intent_map_from_state
 from cadence.music.seed_policy import seed_for_state
@@ -8,9 +9,6 @@ from cadence.music.harmony_theory import chord_at_bar, chord_pitches, section_ha
 from cadence.music.instrument_patterns import stab_steps
 from cadence.schemas.song_state import RhythmEvent, Track
 
-
-def _ms_per_step(bpm: int) -> float:
-    return (60000 / bpm) / 4
 
 
 def _compose_chord_stab(ctx: ComposeContext) -> Track | None:
@@ -27,8 +25,8 @@ def _compose_chord_stab(ctx: ComposeContext) -> Track | None:
     stab_pattern = strategies.stab_pattern if strategies else None
     stab_step_pattern = stab_steps(stab_pattern, seed)
 
-    step_ms = _ms_per_step(ctx.bpm)
-    steps_per_bar = 16
+    step_ms = ms_per_step(ctx.bpm, ctx.time_signature)
+    steps_per_bar = meter_steps_per_bar(ctx.time_signature)
     events: list[RhythmEvent] = []
     current_t = 0.0
     beat_index = 0

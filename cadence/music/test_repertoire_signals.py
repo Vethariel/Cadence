@@ -11,7 +11,12 @@ from cadence.schemas.song_state import GenerationStrategies, OrchestrationPlan, 
 
 
 def test_high_energy_implies_dense_layers():
-    s = select_strategies(42, [], "minor", "game", 5)
+    """Capas implícitas vienen de patrones/strategies, no de un seed concreto."""
+    s = GenerationStrategies(
+        generation_seed=42,
+        arp_pattern="sixteenth_a",
+        echo_source="auto",
+    )
     implied = instruments_implied_by_strategies(s, energy_level=5, use_case="game")
     assert "arp_synth" in implied
     assert "echo_synth" in implied

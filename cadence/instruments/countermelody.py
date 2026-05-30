@@ -1,5 +1,6 @@
 """Contramelodía determinista — segunda voz derivada del motivo en desarrollo."""
 
+from cadence.music.meter_theory import ms_per_step, steps_per_bar as meter_steps_per_bar
 from cadence.instruments.context import ComposeContext
 from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.agent.nodes.narrative_apply import melody_should_play
@@ -10,12 +11,10 @@ from cadence.music.harmony_theory import chord_at_bar, chord_tones_as_degrees, s
 from cadence.music.instrument_patterns import COUNTER_PATTERN_POOL, counter_steps
 from cadence.music.layer_voice_variation import counter_skip_step, pitch_shift_for_transform
 from cadence.music.segment_variation import segment_at_bar, segment_index_at_bar, pattern_id_for_segment
+from cadence.music.orchestral_stack_policy import orchestral_stack_active
 from cadence.music.style_archetype import get_composition_archetype
 from cadence.schemas.song_state import RhythmEvent, Track
 
-
-def _ms_per_step(bpm: int) -> float:
-    return (60000 / bpm) / 4
 
 
 def _compose_countermelody(ctx: ComposeContext) -> Track | None:
@@ -42,8 +41,8 @@ def _compose_countermelody(ctx: ComposeContext) -> Track | None:
         development.texture_mode if development else "staggered"
     )
 
-    step_ms = _ms_per_step(ctx.bpm)
-    steps_per_bar = 16
+    step_ms = ms_per_step(ctx.bpm, ctx.time_signature)
+    steps_per_bar = meter_steps_per_bar(ctx.time_signature)
     events: list[RhythmEvent] = []
     current_t = 0.0
     beat_index = 0
@@ -92,11 +91,21 @@ def _compose_countermelody(ctx: ComposeContext) -> Track | None:
                 chord_degrees = chord_tones_as_degrees(chord)
 
             for step_i, step in enumerate(step_pattern):
-                if counter_skip_step(
-                    step_i, transform,
-                    texture_mode=texture_mode,
-                    events_per_bar=len(step_pattern),
-                ):
+                from cadence.music.orchestral_stack_policy import (
+                    counter_skip_orchestral,
+                    orchestral_stack_active,
+                )
+
+                skip = (
+                    counter_skip_orchestral(step_i, transform, events_per_bar=len(step_pattern))
+                    if orchestral_stack_active(archetype)
+                    else counter_skip_step(
+                        step_i, transform,
+                        texture_mode=texture_mode,
+                        events_per_bar=len(step_pattern),
+                    )
+                )
+                if skip:
                     continue
                 degree = chord_degrees[step_i % len(chord_degrees)] % 7
                 if transform == "invert":

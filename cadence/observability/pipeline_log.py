@@ -18,15 +18,8 @@ logger = logging.getLogger("cadence.pipeline")
 
 TRACE_CAP = 120
 LLM_NODES = frozenset({
-    "router",
-    "tag_enricher",
-    "technical_proposal",
-    "technical_parser",
-    "narrative_planner",
-    "structure_planner",
-    "instrument_planner",
-    "style_coherence",
-    "melody",
+    "prompt_enhancer",
+    "technical_spec",
 })
 
 

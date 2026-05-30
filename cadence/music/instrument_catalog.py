@@ -22,7 +22,10 @@ from cadence.schemas.song_state import (
     InstrumentAssignment,
     MusicalStyleProfile,
     OrchestrationPlan,
+    ProposalInstrument,
+    TechnicalProposal,
     Track,
+    UserIntent,
 )
 from cadence.music.ensemble_policy import (
     ENSEMBLE_INSTRUMENT_IDS,
@@ -34,6 +37,7 @@ from cadence.music.ensemble_policy import (
 from cadence.music.melody_identity import melody_instrument_from_state
 from cadence.music.style_profile import programs_matching_avoid
 
+# Capas rítmicas/melódicas habituales (no obligatorias; solo clasificación y orden).
 CORE_INSTRUMENTS = frozenset({"drums", "bass", "melody"})
 OPTIONAL_LEADS = frozenset({"countermelody", "echo_synth", "arp_synth", "chord_stab"})
 OPTIONAL_SUPPORT = frozenset({"pad", "perc_aux", "fx_riser"})
@@ -67,7 +71,9 @@ MAX_LEAD_OPTIONALS = {
 }
 
 def is_drum(instrument_id: str, role: str) -> bool:
-    return role == "rhythm" or instrument_id in ("drums", "perc_aux")
+    from cadence.music.instrument_roles import is_percussion_role
+
+    return is_percussion_role(role) or instrument_id in ("drums", "perc_aux")
 
 
 def _tags_lower(genre_tags: list[str]) -> set[str]:
@@ -228,11 +234,11 @@ def format_catalog_for_llm() -> str:
     """Instrumentos del registro + referencia al catálogo de timbres."""
     lines = [
         "Instrumentos compositores registrados:",
-        f"Obligatorios siempre activos: {', '.join(sorted(CORE_INSTRUMENTS))}.",
+        f"Capas habituales (no obligatorias): {', '.join(sorted(CORE_INSTRUMENTS))}.",
     ]
     for iid in sorted(list_instruments()):
         defn = get_instrument(iid)
-        req = "requiere LLM" if defn.requires_llm else "determinista"
+        req = "determinista" if not defn.requires_llm else "opcional-LLM"
         n_timbres = len(get_timbres(iid))
         lines.append(
             f"  • {iid} — rol={defn.role}, canal={defn.midi_channel}, {req}, "
@@ -245,6 +251,215 @@ def format_catalog_for_llm() -> str:
     return "\n".join(lines)
 
 
+_OPTIONAL_IDS_ORDER = (
+    "countermelody", "echo_synth", "arp_synth", "chord_stab", "synth_pluck",
+    "pad", "perc_aux", "fx_riser",
+)
+
+_DEFAULT_MIX = {"drums": -10.0, "bass": -6.0, "melody": -8.0, "pad": -14.0}
+
+
+def format_orchestration_catalog_for_llm(
+    *,
+    use_case: str = "game",
+    genre_tags: list[str] | None = None,
+    mood: str = "",
+    energy_level: int = 3,
+    composition_archetype: str | None = None,
+) -> str:
+    """
+    Catálogo compacto para technical_spec: capas + gm_program permitidos (filtrados por contexto).
+    """
+    from cadence.music.genre_orchestration import (
+        adjust_optional_budget,
+        lead_fallback_pool,
+        select_lead_layers_genre_aware,
+    )
+
+    uc = (use_case or "game").lower()
+    tags = list(genre_tags or [])
+    max_opt, max_lead = adjust_optional_budget(
+        MAX_OPTIONAL_BY_USE_CASE.get(uc, 4),
+        MAX_LEAD_OPTIONALS.get(uc, 2),
+        genre_tags=tags,
+        composition_archetype=composition_archetype,
+        energy_level=energy_level,
+        use_case=uc,
+    )
+    suggested_leads = select_lead_layers_genre_aware(
+        use_case=uc,
+        energy_level=energy_level,
+        generation_seed=0,
+        composition_archetype=composition_archetype,
+        genre_tags=tags,
+        max_lead=max_lead,
+    )
+    fallback_pool = lead_fallback_pool(
+        use_case=uc,
+        energy_level=energy_level,
+        composition_archetype=composition_archetype,
+        genre_tags=tags,
+    )
+
+    lines = [
+        "=== ORQUESTACIÓN Y TIMBRES (instruments en TechnicalProposal) ===",
+        f"Capas habituales (referencia): {', '.join(sorted(CORE_INSTRUMENTS))}.",
+        f"use_case={uc}: máx ~{max_opt + len(CORE_INSTRUMENTS)} capas totales, "
+        f"máx {max_lead} leads (countermelody, echo_synth, arp_synth, chord_stab, synth_pluck).",
+        f"Leads sugeridos: {', '.join(suggested_leads) or 'ninguno'}.",
+        f"Pool: {', '.join(fallback_pool)}.",
+        "Reglas:",
+        "- instruments[]: solo las capas que quieras activar (puede ser solo pad, solo melody, etc.).",
+        "- No hay núcleo obligatorio: omite drums/bass/melody si el brief no los necesita.",
+        "- gm_program: número EXACTO de la lista de cada instrument_id.",
+        "- drums y perc_aux: gm_program=0 (percusión GM, canal 9/10).",
+        "- No repitas el mismo gm_program entre leads activos.",
+        "- Cada entrada debe incluir role (lead|bass|rhythm|pad|fx).",
+        "- ensemble_concept: 1–2 frases del color sonoro (variación creativa).",
+        "- Si instruments=[] el sistema sugiere capas por contexto y seed.",
+        "",
+    ]
+    from cadence.music.instrument_roles import format_roles_for_llm
+
+    lines.append(format_roles_for_llm())
+    lines.append("")
+    show_ids = sorted(CORE_INSTRUMENTS) + [
+        iid for iid in _OPTIONAL_IDS_ORDER if iid in set(list_instruments())
+    ]
+    for iid in show_ids:
+        defn = get_instrument(iid)
+        if is_drum(iid, defn.role):
+            lines.append(
+                f"[{iid}] role=rhythm (obligatorio) — active=true, gm_program=0",
+            )
+            continue
+        lines.append(f"[{iid}] rol_sugerido={defn.role} — elige role + gm_program:")
+        timbres = get_timbres(
+            iid,
+            genre_tags=tags,
+            mood=mood,
+            use_case=uc,
+            composition_archetype=composition_archetype,
+        )
+        for program, name in timbres:
+            lines.append(f"    {program}: {name}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def proposal_has_orchestration(proposal: TechnicalProposal) -> bool:
+    return bool(proposal.instruments)
+
+
+def normalize_technical_proposal_instruments(
+    proposal: TechnicalProposal,
+    intent: UserIntent,
+    *,
+    composition_archetype: str | None = None,
+) -> TechnicalProposal:
+    """
+    Valida ids y ajusta gm_program al catálogo (conserva elección LLM si es válida).
+    """
+    if not proposal.instruments:
+        return proposal
+
+    known = set(list_instruments())
+    by_id: dict[str, InstrumentAssignment] = {}
+    ctx = {
+        "genre_tags": list(proposal.genre_tags),
+        "mood": intent.mood,
+        "use_case": intent.use_case,
+        "composition_archetype": composition_archetype,
+    }
+
+    for item in proposal.instruments:
+        iid = (item.instrument_id or "").strip().lower()
+        if iid not in known:
+            continue
+        defn = get_instrument(iid)
+        active = item.active
+        from cadence.music.instrument_roles import normalize_instrument_role
+
+        role = normalize_instrument_role(iid, item.role)
+        if is_drum(iid, role):
+            by_id[iid] = InstrumentAssignment(
+                instrument_id=iid,
+                role=role,
+                gm_program=0,
+                display_name=defn.display_name,
+                mix_level=_DEFAULT_MIX.get(iid, -10.0),
+                active=active,
+            )
+            continue
+        prog, name = resolve_timbre(iid, item.gm_program, generation_seed=0, **ctx)
+        by_id[iid] = InstrumentAssignment(
+            instrument_id=iid,
+            role=role,
+            gm_program=prog,
+            display_name=name,
+            mix_level=_DEFAULT_MIX.get(iid, -10.0),
+            active=active,
+        )
+
+    out: list[ProposalInstrument] = [
+        ProposalInstrument(
+            instrument_id=iid,
+            role=assign.role,
+            gm_program=assign.gm_program,
+            active=assign.active,
+        )
+        for iid, assign in sorted(by_id.items())
+    ]
+    return proposal.model_copy(update={"instruments": out})
+
+
+def proposal_instruments_to_assignments(
+    proposal: TechnicalProposal,
+    intent: UserIntent,
+    *,
+    composition_archetype: str | None = None,
+) -> list[InstrumentAssignment]:
+    """Convierte instruments del technical_spec a asignaciones validadas."""
+    if not proposal.instruments:
+        return []
+    ctx = {
+        "genre_tags": list(proposal.genre_tags),
+        "mood": intent.mood,
+        "use_case": intent.use_case,
+        "composition_archetype": composition_archetype,
+    }
+    out: list[InstrumentAssignment] = []
+    for item in proposal.instruments:
+        iid = (item.instrument_id or "").strip().lower()
+        if iid not in set(list_instruments()):
+            continue
+        defn = get_instrument(iid)
+        active = item.active
+        from cadence.music.instrument_roles import normalize_instrument_role
+
+        role = normalize_instrument_role(iid, item.role)
+        if is_drum(iid, role):
+            out.append(InstrumentAssignment(
+                instrument_id=iid,
+                role=role,
+                gm_program=0,
+                display_name=defn.display_name,
+                mix_level=_DEFAULT_MIX.get(iid, -10.0),
+                active=active,
+            ))
+            continue
+        prog, name = resolve_timbre(iid, item.gm_program, generation_seed=0, **ctx)
+        out.append(InstrumentAssignment(
+            instrument_id=iid,
+            role=role,
+            gm_program=prog,
+            display_name=name,
+            mix_level=_DEFAULT_MIX.get(iid, -10.0),
+            active=active,
+        ))
+    return out
+
+
 def _assignment_from_timbre(
     item: InstrumentAssignment,
     *,
@@ -252,16 +467,21 @@ def _assignment_from_timbre(
     default_mix: float | None = None,
     timbre_context: dict | None = None,
 ) -> InstrumentAssignment:
+    from cadence.music.instrument_roles import normalize_instrument_role
+
     ctx = timbre_context or {}
     defn = get_instrument(item.instrument_id)
     mix = default_mix if default_mix is not None else item.mix_level
-    if is_drum(item.instrument_id, defn.role):
+    role = normalize_instrument_role(item.instrument_id, item.role)
+    active = item.active
+    if is_drum(item.instrument_id, role):
         return InstrumentAssignment(
             instrument_id=item.instrument_id,
+            role=role,
             gm_program=0,
             display_name=defn.display_name,
             mix_level=max(-24.0, min(0.0, mix)),
-            active=True,
+            active=active,
         )
     prog, name = resolve_timbre(
         item.instrument_id,
@@ -271,10 +491,11 @@ def _assignment_from_timbre(
     )
     return InstrumentAssignment(
         instrument_id=item.instrument_id,
+        role=role,
         gm_program=prog,
         display_name=name,
         mix_level=max(-24.0, min(0.0, mix)),
-        active=True,
+        active=active,
     )
 
 
@@ -456,8 +677,9 @@ def validate_orchestration(
     raw_prompt: str = "",
     creative_variation: object | None = None,
     composition_archetype: str | None = None,
+    lock_llm_ensemble: bool = False,
 ) -> OrchestrationPlan:
-    """Corrige IDs, timbres GM, ritmo y presupuesto; garantiza núcleo drums/bass/melody."""
+    """Corrige IDs, timbres GM, ritmo y presupuesto; respeta solo capas activas del plan."""
     from cadence.music.style_archetype import infer_composition_archetype
     from cadence.schemas.song_state import GenerationStrategies
 
@@ -530,36 +752,11 @@ def validate_orchestration(
             timbre_context=timbre_context,
         )
 
-    suppress_drums = percussion_suppressed(
-        use_case=use_case,
-        energy_level=energy_level,
-        style_profile=style_profile,
-    )
-    default_mix = {"drums": -10.0, "bass": -6.0, "melody": -8.0}
-    for core in CORE_INSTRUMENTS:
-        if core == "drums" and suppress_drums:
-            continue
-        if core not in by_id:
-            by_id[core] = _assignment_from_timbre(
-                InstrumentAssignment(
-                    instrument_id=core,
-                    gm_program=0,
-                    mix_level=default_mix[core],
-                    active=True,
-                ),
-                generation_seed=generation_seed,
-                default_mix=default_mix[core],
-                timbre_context=timbre_context,
-            )
-
     from cadence.music.genre_orchestration import optional_layer_genre_score
 
-    optionals = [iid for iid in by_id if iid not in CORE_INSTRUMENTS and iid in known]
-    if len(optionals) > max_optional:
-        trim_candidates = [
-            iid for iid in optionals
-            if iid not in protected
-        ]
+    max_total = max_optional + len(CORE_INSTRUMENTS)
+    if len(by_id) > max_total:
+        trim_candidates = [iid for iid in by_id if iid not in protected]
         trim_candidates.sort(
             key=lambda iid: (
                 optional_layer_genre_score(
@@ -570,13 +767,13 @@ def validate_orchestration(
                     energy_level=energy_level,
                 ),
                 _TRIM_PRIORITY.index(iid) if iid in _TRIM_PRIORITY else 99,
+                iid in CORE_INSTRUMENTS,
             ),
         )
-        while len(optionals) > max_optional and trim_candidates:
+        while len(by_id) > max_total and trim_candidates:
             victim = trim_candidates.pop(0)
             if victim in by_id:
                 del by_id[victim]
-                optionals.remove(victim)
 
     from cadence.music.harmonic_coherence import apply_lead_support_cap
 
@@ -588,11 +785,11 @@ def validate_orchestration(
         composition_archetype=archetype,
     )
     for iid in list(by_id.keys()):
-        if iid not in CORE_INSTRUMENTS and iid not in allowed_ids:
+        if iid not in allowed_ids and iid not in protected:
             del by_id[iid]
     if allowed_pool:
         for iid in list(by_id.keys()):
-            if iid not in CORE_INSTRUMENTS and iid not in allowed_pool:
+            if iid not in allowed_pool and iid not in protected:
                 del by_id[iid]
 
     lead_present = [iid for iid in LEAD_OPTIONALS if iid in by_id]
@@ -606,16 +803,17 @@ def validate_orchestration(
                 del by_id[iid]
                 lead_present.remove(iid)
 
-    inject_ensemble_into_assignments(
-        by_id,
-        genre_tags=genre_tags,
-        composition_archetype=archetype,
-        use_case=use_case,
-        energy_level=energy_level,
-        generation_seed=generation_seed,
-        timbre_context=timbre_context,
-        genre_mix=genre_mix,
-    )
+    if not lock_llm_ensemble:
+        inject_ensemble_into_assignments(
+            by_id,
+            genre_tags=genre_tags,
+            composition_archetype=archetype,
+            use_case=use_case,
+            energy_level=energy_level,
+            generation_seed=generation_seed,
+            timbre_context=timbre_context,
+            genre_mix=genre_mix,
+        )
     for ens, generic in ENSEMBLE_REPLACES_OPTIONAL.items():
         if ens in by_id and generic in by_id:
             del by_id[generic]
@@ -682,7 +880,8 @@ def apply_orchestration_gm(tracks: list[Track], plan: OrchestrationPlan) -> list
             result.append(track)
             continue
         updates: dict = {"instrument": entry.display_name}
-        if not is_drum(iid, track.role):
+        updates["role"] = entry.role
+        if not is_drum(iid, entry.role):
             updates["gm_program"] = entry.gm_program
         result.append(track.model_copy(update=updates))
     return result
@@ -718,18 +917,6 @@ def build_fallback_orchestration(
             ),
             generation_seed=generation_seed,
         )
-
-    for core in CORE_INSTRUMENTS:
-        if core not in seen:
-            seen[core] = _assignment_from_timbre(
-                InstrumentAssignment(
-                    instrument_id=core,
-                    gm_program=0,
-                    mix_level=-10.0 if core == "drums" else (-6.0 if core == "bass" else -8.0),
-                    active=True,
-                ),
-                generation_seed=generation_seed,
-            )
 
     plan = OrchestrationPlan(
         ensemble_concept="fallback",

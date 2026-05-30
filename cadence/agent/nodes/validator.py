@@ -22,6 +22,7 @@ from cadence.music.melody_density_policy import (
     melody_max_long_gap_ratio,
     melody_min_notes_per_bar_validator,
 )
+from cadence.music.meter_theory import ms_per_bar as meter_ms_per_bar
 
 
 # ── Checks individuales ───────────────────────────────────────
@@ -30,7 +31,7 @@ from cadence.music.melody_density_policy import (
 def _required_layer_ids(arrangement: ArrangementPlan | None) -> set[str]:
     if arrangement:
         return set(arrangement.required_layers)
-    return {"drums", "bass", "melody"}
+    return set()
 
 
 def _check_all_tracks_present(
@@ -48,7 +49,12 @@ def _check_melody_coverage(
     tracks: list[Track],
     estimated_duration_ms: int,
     sections: list[str],
+    *,
+    arrangement: ArrangementPlan | None = None,
 ) -> tuple[bool, str]:
+    required = _required_layer_ids(arrangement)
+    if required and "melody" not in required:
+        return True, ""
     melody = next((t for t in tracks if t.id == "melody"), None)
     if not melody or not melody.events:
         return False, "Track de melodía vacío"
@@ -135,13 +141,17 @@ def _check_melody_variety(tracks: list[Track]) -> tuple[bool, str]:
     return True, ""
 
 
-def _check_melody_loop(tracks: list[Track], bpm: int) -> tuple[bool, str]:
+def _check_melody_loop(
+    tracks: list[Track],
+    bpm: int,
+    time_signature: list[int] | None = None,
+) -> tuple[bool, str]:
     """Penaliza compases consecutivos con la misma secuencia de pitches."""
     melody = next((t for t in tracks if t.id == "melody"), None)
     if not melody or len(melody.events) < 8:
         return True, ""
 
-    ms_per_bar = (60000 / max(bpm, 1)) * 4
+    ms_per_bar = meter_ms_per_bar(bpm, time_signature)
     bar_pitches: dict[int, list[int]] = {}
     for e in melody.events:
         bar = int(e.t / ms_per_bar)
@@ -250,10 +260,11 @@ def _check_instrumental_richness(
     energy_level: int,
     use_case: str,
     composition_archetype: str | None = None,
+    time_signature: list[int] | None = None,
 ) -> tuple[bool, str]:
     """Capas simultáneas y variación de densidad — relevante en game/energy alta."""
     arch = composition_archetype or ""
-    layers_mean, layers_max = layers_active_stats(tracks, bpm)
+    layers_mean, layers_max = layers_active_stats(tracks, bpm, time_signature)
 
     if arch == "compact_action":
         if layers_mean > 4.2:
@@ -264,7 +275,7 @@ def _check_instrumental_richness(
         return True, ""
 
     if arch == "orchestral_boss" and energy_level >= 4:
-        density_stdev = notes_per_bar_stdev(tracks, bpm)
+        density_stdev = notes_per_bar_stdev(tracks, bpm, time_signature)
         min_mean = 3.6 if energy_level == 4 else 4.2
         min_stdev = 9.0 if energy_level == 4 else 11.0
         min_max = 4 if energy_level == 4 else 5
@@ -281,7 +292,7 @@ def _check_instrumental_richness(
 
     if not _is_high_energy_game(energy_level, use_case):
         return True, ""
-    density_stdev = notes_per_bar_stdev(tracks, bpm)
+    density_stdev = notes_per_bar_stdev(tracks, bpm, time_signature)
     min_mean = 3.0 if energy_level == 4 else 3.5
     min_stdev = 8.0 if energy_level == 4 else 10.0
 
@@ -329,6 +340,7 @@ def _check_melody_rest_density(
     energy_level: int = 3,
     melody_texture: str = "balanced",
     use_case: str = "game",
+    time_signature: list[int] | None = None,
 ) -> tuple[bool, str]:
     """Penaliza silencios largos cuando el arquetipo exige melodía densa."""
     max_ratio = melody_max_long_gap_ratio(
@@ -352,7 +364,7 @@ def _check_melody_rest_density(
             gaps.append(gap)
     if not gaps:
         return True, ""
-    bar_ms = (60000 / max(bpm, 1)) * 4
+    bar_ms = meter_ms_per_bar(bpm, time_signature)
     long_gaps = sum(1 for g in gaps if g >= bar_ms * 0.12)
     rest_ratio = long_gaps / len(gaps)
     if rest_ratio > max_ratio:
@@ -371,6 +383,7 @@ def _check_melody_notes_per_bar(
     energy_level: int = 3,
     melody_texture: str = "balanced",
     use_case: str = "game",
+    time_signature: list[int] | None = None,
 ) -> tuple[bool, str]:
     """Umbral mínimo de notas/compás para arquetipos dance/chiptune."""
     min_mean = melody_min_notes_per_bar_validator(
@@ -382,7 +395,7 @@ def _check_melody_notes_per_bar(
     if min_mean is None:
         return True, ""
 
-    mean_notes = melody_notes_per_bar_mean(tracks, bpm)
+    mean_notes = melody_notes_per_bar_mean(tracks, bpm, time_signature)
     if mean_notes < min_mean:
         arch = composition_archetype or "dense"
         return False, (
@@ -396,6 +409,7 @@ def _check_melody_register_ceiling(
     tracks: list[Track],
     bpm: int,
     state: SongState,
+    time_signature: list[int] | None = None,
 ) -> tuple[bool, str]:
     """Techo de densidad/staccato según VoiceRegisterProfile."""
     from cadence.music.voice_register_profile import profile_from_state
@@ -409,7 +423,7 @@ def _check_melody_register_ceiling(
         return True, ""
 
     issues = []
-    mean_notes = melody_notes_per_bar_mean(tracks, bpm)
+    mean_notes = melody_notes_per_bar_mean(tracks, bpm, time_signature)
     if (
         profile.max_melody_notes_per_bar is not None
         and mean_notes > profile.max_melody_notes_per_bar
@@ -420,7 +434,7 @@ def _check_melody_register_ceiling(
         )
 
     if profile.max_staccato_ratio is not None:
-        bar_ms = (60000 / max(bpm, 1)) * 4
+        bar_ms = meter_ms_per_bar(bpm, time_signature)
         threshold = bar_ms / 8
         notes = [e for e in melody.events if e.type == "note"]
         if notes:
@@ -443,11 +457,12 @@ def _check_orchestral_simultaneity(
     composition_archetype: str | None = None,
     arrangement: ArrangementPlan | None = None,
     duration_ms: int = 0,
+    time_signature: list[int] | None = None,
 ) -> tuple[bool, str]:
     if composition_archetype != "orchestral_boss" or energy_level < 4:
         return True, ""
 
-    layers_mean, layers_max = layers_active_stats(tracks, bpm)
+    layers_mean, layers_max = layers_active_stats(tracks, bpm, time_signature)
     min_max = 4 if energy_level == 4 else 5
     min_mean = 3.4 if energy_level == 4 else 3.8
     issues = []
@@ -600,6 +615,7 @@ def validator_node(state: SongState) -> dict:
     narrative = state.get("narrative")
     proposal = state.get("technical_proposal")
     bpm = proposal.bpm if proposal else 120
+    time_signature = list(proposal.time_signature) if proposal else [4, 4]
     energy = proposal.energy_level if proposal else 3
     use_case = state["intent"].use_case
 
@@ -638,29 +654,32 @@ def validator_node(state: SongState) -> dict:
                 tracks,
                 structure.estimated_duration_ms,
                 structure.sections,
+                arrangement=arrangement,
             )
         elif check_fn == _check_drums_present:
             passed, msg = check_fn(tracks, structure.sections, arrangement)
         elif check_fn == _check_melody_loop:
-            passed, msg = check_fn(tracks, bpm)
+            passed, msg = check_fn(tracks, bpm, time_signature)
         elif check_fn == _check_dynamic_range:
             passed, msg = check_fn(tracks, structure.sections)
         elif check_fn == _check_intensity_arc:
             passed, msg = check_fn(tracks, structure.sections, intent_map)
         elif check_fn == _check_instrumental_richness:
-            passed, msg = check_fn(tracks, bpm, energy, use_case, archetype)
+            passed, msg = check_fn(
+                tracks, bpm, energy, use_case, archetype, time_signature,
+            )
         elif check_fn == _check_melody_leaps:
             passed, msg = check_fn(tracks, energy, use_case, archetype)
         elif check_fn == _check_melody_rest_density:
             passed, msg = check_fn(
-                tracks, bpm, archetype, energy, melody_texture, use_case,
+                tracks, bpm, archetype, energy, melody_texture, use_case, time_signature,
             )
         elif check_fn == _check_melody_notes_per_bar:
             passed, msg = check_fn(
-                tracks, bpm, archetype, energy, melody_texture, use_case,
+                tracks, bpm, archetype, energy, melody_texture, use_case, time_signature,
             )
         elif check_fn == _check_melody_register_ceiling:
-            passed, msg = check_fn(tracks, bpm, state)
+            passed, msg = check_fn(tracks, bpm, state, time_signature)
         elif check_fn == _check_orchestral_simultaneity:
             passed, msg = check_fn(
                 tracks,
@@ -669,6 +688,7 @@ def validator_node(state: SongState) -> dict:
                 archetype,
                 arrangement,
                 structure.estimated_duration_ms,
+                time_signature,
             )
         elif check_fn == _check_planned_optional_layers:
             passed, msg = check_fn(

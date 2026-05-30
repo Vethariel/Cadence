@@ -44,6 +44,13 @@ def development_planner_node(state: SongState) -> dict:
         composition_archetype=archetype,
     )
 
+    from cadence.music.technical_proposal_apply import snap_texture_mode
+
+    if proposal:
+        tex = snap_texture_mode(proposal.texture_mode)
+        if tex:
+            development = development.model_copy(update={"texture_mode": tex})  # type: ignore[arg-type]
+
     out: dict = {"development": development}
     harmony = state.get("harmony")
     if harmony:

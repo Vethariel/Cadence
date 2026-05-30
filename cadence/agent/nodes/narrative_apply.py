@@ -66,10 +66,10 @@ def transition_events(
     section: str,
     beat_index: int,
     drum_midi: dict[str, int],
+    steps_per_bar: int = 16,
 ) -> list[RhythmEvent]:
     """Eventos de transición en el último compás de una sección."""
     events: list[RhythmEvent] = []
-    steps_per_bar = 16
 
     if transition_out == "riser":
         for step in range(8, steps_per_bar):

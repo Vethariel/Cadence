@@ -105,6 +105,13 @@ def clear_service_combo_memory() -> None:
     _service_combo_recent.clear()
 
 
+def reset_pattern_batch_context() -> None:
+    """Limpia memoria de combos y contextvars (aislamiento entre tests)."""
+    clear_service_combo_memory()
+    _recent_patterns.set(None)
+    _combo_diversity_window.set(0)
+
+
 class PatternBatchContext:
     """Acumula firmas drum/bass/harmony en generaciones consecutivas."""
 

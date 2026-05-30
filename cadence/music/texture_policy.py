@@ -45,7 +45,13 @@ def infer_texture_mode(
     if arch == "chiptune_dance" and energy_level >= 4:
         return "simultaneous"
     if arch == "orchestral_boss" and energy_level >= 4:
-        return "simultaneous"
+        from cadence.music.orchestral_stack_policy import effective_texture_mode_for_schedule
+
+        return effective_texture_mode_for_schedule(
+            "simultaneous",
+            composition_archetype=arch,
+            energy_level=energy_level,
+        )
 
     if uc in ("loop", "cutscene"):
         return "bedded"
@@ -79,9 +85,18 @@ def entry_stagger_for_texture(
     texture_mode: TextureMode,
     layer_id: str,
     narrative_role: str,
+    *,
+    composition_archetype: str | None = None,
 ) -> int:
     if texture_mode == "bedded" and layer_id in BED_CORE:
         return 0
+    from cadence.music.orchestral_stack_policy import (
+        entry_stagger_orchestral,
+        orchestral_stack_active,
+    )
+
+    if orchestral_stack_active(composition_archetype):
+        return entry_stagger_orchestral(layer_id, narrative_role)
     if texture_mode == "simultaneous":
         return 0
     if texture_mode == "compact" and layer_id in LEAD_SUPPORTS:
@@ -153,6 +168,7 @@ def build_segment_schedule_pending(
     *,
     use_case: str,
     texture_mode: TextureMode,
+    composition_archetype: str | None = None,
 ) -> list[tuple[int, str, str]]:
     """Entradas (global_bar, add|remove, layer_id) desde subdivisiones de desarrollo."""
     if not development:
@@ -170,13 +186,28 @@ def build_segment_schedule_pending(
         base_bar = starts.get(sec_dev.section_id, 0)
         for seg_idx, seg in enumerate(sec_dev.segments):
             gbar = base_bar + seg.start_bar
-            add, remove = segment_layer_delta(
-                seg.transform,
-                texture_mode=texture_mode,
-                use_case=use_case,
-                available=available,
-                segment_index=seg_idx,
-            )
+            role = intent.narrative_role if intent else "establish"
+            from cadence.music.orchestral_stack_policy import orchestral_stack_active
+
+            if orchestral_stack_active(composition_archetype):
+                from cadence.music.orchestral_stack_policy import (
+                    segment_layer_delta_orchestral,
+                )
+
+                remove, add = segment_layer_delta_orchestral(
+                    seg.transform,
+                    available=available,
+                    segment_index=seg_idx,
+                    section_role=role,
+                )
+            else:
+                add, remove = segment_layer_delta(
+                    seg.transform,
+                    texture_mode=texture_mode,
+                    use_case=use_case,
+                    available=available,
+                    segment_index=seg_idx,
+                )
             for lid in remove:
                 pending.append((gbar, "remove", lid))
             for lid in add:
@@ -185,7 +216,15 @@ def build_segment_schedule_pending(
     return pending
 
 
-def arrangement_required_layers(use_case: str, percussion_suppressed: bool) -> list[str]:
+def arrangement_required_layers(
+    use_case: str,
+    percussion_suppressed: bool,
+    *,
+    active_instrument_ids: set[str] | None = None,
+) -> list[str]:
+    """Capas que el validador exige en tracks; prioriza el plan de orquestación."""
+    if active_instrument_ids:
+        return sorted(active_instrument_ids)
     if percussion_suppressed or (use_case or "game").lower() in ("loop", "cutscene"):
         return ["bass", "melody", "pad"]
     return ["drums", "bass", "melody"]

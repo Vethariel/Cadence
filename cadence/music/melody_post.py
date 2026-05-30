@@ -24,12 +24,16 @@ DENSE_DENSITY = 0.7
 FILL_VELOCITY = 72
 
 
-def ms_per_bar(bpm: int) -> float:
-    return (60000 / max(bpm, 1)) * 4
+def ms_per_bar(bpm: int, time_signature: list[int] | None = None) -> float:
+    from cadence.music.meter_theory import ms_per_bar as _ms_per_bar
+
+    return _ms_per_bar(bpm, time_signature)
 
 
-def ms_per_step(bpm: int) -> float:
-    return (60000 / max(bpm, 1)) / 4
+def ms_per_step(bpm: int, time_signature: list[int] | None = None) -> float:
+    from cadence.music.meter_theory import ms_per_step as _ms_per_step
+
+    return _ms_per_step(bpm, time_signature)
 
 
 def _is_dense_section(section: str, intent_map: dict) -> bool:
@@ -119,12 +123,13 @@ def fill_melody_gaps(
     gap_threshold_ms: float | None = None,
     use_case: str = "game",
     composition_archetype: str | None = None,
+    time_signature: list[int] | None = None,
 ) -> list[RhythmEvent]:
     """Inserta notas de paso en huecos grandes para bajar el rest ratio."""
     if len(events) < 2:
         return events
 
-    step_ms = ms_per_step(bpm)
+    step_ms = ms_per_step(bpm, time_signature)
     if gap_threshold_ms is None:
         gap_threshold_ms = step_ms * 4  # ~1/4 de negra en steps 16th
 
@@ -145,7 +150,7 @@ def fill_melody_gaps(
 
         if gap >= threshold:
             # Solo rellenar si el hueco supera lo permitido para la sección
-            bar_ms = ms_per_bar(bpm)
+            bar_ms = ms_per_bar(bpm, time_signature)
             approx_rest_ratio = gap / max(bar_ms, 1)
             if approx_rest_ratio > max_ratio * 0.5:
                 mid_t = int(prev.t + prev.duration_ms + gap * 0.35)
@@ -174,13 +179,14 @@ def densify_melody(
     scale_pitches: list[int],
     intent_map: dict,
     min_notes_per_bar: int = MIN_NOTES_PER_BAR_DENSE,
+    time_signature: list[int] | None = None,
 ) -> list[RhythmEvent]:
     """Añade notas ornamentales en compases sparse de secciones densas."""
     if not events:
         return events
 
-    bar_ms = ms_per_bar(bpm)
-    step_ms = ms_per_step(bpm)
+    bar_ms = ms_per_bar(bpm, time_signature)
+    step_ms = ms_per_step(bpm, time_signature)
     by_bar: dict[tuple[str, int], list[RhythmEvent]] = defaultdict(list)
 
     for event in events:
@@ -199,7 +205,9 @@ def densify_melody(
         pitches = [e.pitch for e in sorted(bar_events, key=lambda e: e.t)]
         ref_pitch = pitches[0] if pitches else scale_pitches[0]
         needed = min_notes_per_bar - len(bar_events)
-        offbeat_steps = (2, 6, 10, 14)
+        bar_steps = int(bar_ms / step_ms) if step_ms > 0 else 16
+        stride = max(4, bar_steps // 4)
+        offbeat_steps = tuple(range(2, bar_steps, stride))
 
         for i in range(needed):
             step = offbeat_steps[i % len(offbeat_steps)]
@@ -218,7 +226,7 @@ def densify_melody(
                 pitch=pitch,
                 duration_ms=int(step_ms * 1.5),
                 velocity=FILL_VELOCITY - 4,
-                beat_index=bar * 16 + step,
+                beat_index=bar * bar_steps + step,
                 section=section,
             ))
 
@@ -229,12 +237,13 @@ def apply_lead_articulation(
     events: list[RhythmEvent],
     bpm: int,
     profile: VoiceRegisterProfile,
+    time_signature: list[int] | None = None,
 ) -> list[RhythmEvent]:
     """Alarga notas cuando el perfil pide legato/mixed (menos staccato agotador)."""
     if profile.lead_articulation == "staccato" or not events:
         return events
 
-    step_ms = ms_per_step(bpm)
+    step_ms = ms_per_step(bpm, time_signature)
     min_dur = step_ms * profile.min_melody_duration_steps
     sorted_ev = sorted(events, key=lambda e: e.t)
     result: list[RhythmEvent] = []
@@ -277,6 +286,7 @@ def process_melody_events(
     composition_archetype: str | None = None,
     creative_variation: object | None = None,
     voice_register: VoiceRegisterProfile | None = None,
+    time_signature: list[int] | None = None,
 ) -> list[RhythmEvent]:
     """Pipeline de post-proceso melódico — respeta VoiceRegisterProfile."""
     if not events:
@@ -304,10 +314,13 @@ def process_melody_events(
     if isinstance(creative_variation, CreativeVariationBounds):
         micro_var = creative_variation.micro_phrase_variance
 
-    if voice_register.allow_densify:
+    if voice_register.allow_densify or any(
+        _is_dense_section(e.section, intent_map) for e in events
+    ):
         events = densify_melody(
             events, bpm, scale_pitches, intent_map,
             min_notes_per_bar=_min_notes_per_bar(voice_register, energy_level, micro_var),
+            time_signature=time_signature,
         )
     if voice_register.allow_fill_gaps:
         events = fill_melody_gaps(
@@ -317,12 +330,13 @@ def process_melody_events(
             intent_map,
             use_case=use_case,
             composition_archetype=voice_register.composition_archetype,
+            time_signature=time_signature,
         )
 
     events = limit_melody_leaps(
         events, scale_pitches, climax_sections, energy_level, use_case,
     )
-    events = apply_lead_articulation(events, bpm, voice_register)
+    events = apply_lead_articulation(events, bpm, voice_register, time_signature)
     events = clamp_melody_register(events)
     return sorted(events, key=lambda e: e.t)
 
@@ -334,6 +348,7 @@ def _maybe_quantize_to_harmony(
     bpm: int,
     key: str,
     mode: str,
+    time_signature: list[int] | None = None,
 ) -> list[RhythmEvent]:
     from cadence.music.harmonic_coherence import (
         active_instrument_ids_from_plan,
@@ -372,6 +387,7 @@ def _maybe_quantize_to_harmony(
         key=key,
         mode=mode,
         bpm=bpm,
+        time_signature=time_signature,
     )
 
 
@@ -379,6 +395,7 @@ def process_melody_track(track: Track, state: SongState) -> Track:
     proposal = state.get("technical_proposal")
     intent = state["intent"]
     bpm = proposal.bpm if proposal else 120
+    time_signature = list(proposal.time_signature) if proposal else [4, 4]
     key = proposal.key if proposal else "C"
     mode = proposal.mode if proposal else "minor"
     energy = proposal.energy_level if proposal else 3
@@ -412,8 +429,22 @@ def process_melody_track(track: Track, state: SongState) -> Track:
         composition_archetype=archetype,
         creative_variation=state.get("creative_variation"),
         voice_register=voice_register,
+        time_signature=time_signature,
     )
-    events = _maybe_quantize_to_harmony(events, state, bpm=bpm, key=key, mode=mode)
+    structure = state.get("structure")
+    if voice_register.composition_archetype == "orchestral_boss" and structure:
+        from cadence.music.orchestral_stack_policy import apply_orchestral_melody_breaths
+
+        events = apply_orchestral_melody_breaths(
+            events,
+            bpm=bpm,
+            structure=structure,
+            intent_map=intent_map,
+            time_signature=time_signature,
+        )
+    events = _maybe_quantize_to_harmony(
+        events, state, bpm=bpm, key=key, mode=mode, time_signature=time_signature,
+    )
     return track.model_copy(update={"events": events})
 
 

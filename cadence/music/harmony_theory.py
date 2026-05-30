@@ -1,21 +1,15 @@
 """Teoría armónica determinista compartida por bajo, pad y melodía."""
 
 from cadence.schemas.song_state import ChordSpec, HarmonyPlan, SectionHarmony
-
-SCALES = {
-    "minor": [0, 2, 3, 5, 7, 8, 10],
-    "major": [0, 2, 4, 5, 7, 9, 11],
-}
-
-KEY_MIDI = {
-    "C": 60, "C#": 61, "D": 62, "D#": 63, "E": 64, "F": 65,
-    "F#": 66, "G": 67, "G#": 68, "A": 69, "A#": 70, "B": 71,
-}
-
-BASS_MIDI = {
-    "C": 36, "C#": 37, "D": 38, "D#": 39, "E": 40, "F": 41,
-    "F#": 42, "G": 43, "G#": 44, "A": 45, "A#": 46, "B": 47,
-}
+from cadence.music.scale_theory import (
+    KEY_MIDI_BASS as BASS_MIDI,
+    KEY_MIDI_ROOT as KEY_MIDI,
+    bass_root_midi,
+    harmony_template_key,
+    parse_key_name,
+    scale_pitches as _scale_pitches,
+    scale_semitones,
+)
 
 QUALITY_INTERVALS = {
     "minor": [0, 3, 7],
@@ -53,17 +47,11 @@ ROLE_TO_TEMPLATE = {
 
 
 def parse_key(key: str) -> str:
-    return key.split()[0].capitalize()
+    return parse_key_name(key)
 
 
 def scale_pitches(key: str, mode: str, octave: int = 4) -> list[int]:
-    root = KEY_MIDI.get(parse_key(key), 60) + (octave - 4) * 12
-    intervals = SCALES.get(mode, SCALES["minor"])
-    return [root + i for i in intervals]
-
-
-def bass_root_midi(key: str) -> int:
-    return BASS_MIDI.get(parse_key(key), 36)
+    return _scale_pitches(key, mode, octave=octave)
 
 
 def chord_pitches(
@@ -74,7 +62,7 @@ def chord_pitches(
 ) -> list[int]:
     """Tres notas del acorde en MIDI (root, third, fifth)."""
     root_base = bass_root_midi(key) + (octave - 2) * 12
-    scale = SCALES.get(mode, SCALES["minor"])
+    scale = scale_semitones(mode)
     root_semi = scale[chord.root_degree % 7]
     root = root_base + root_semi
     intervals = QUALITY_INTERVALS[chord.quality]
@@ -96,9 +84,13 @@ def progression_for_role(
 ) -> list[tuple[int, str]]:
     if harmony_pool:
         from cadence.music.strategy_pools import get_harmony_templates
-        templates = get_harmony_templates(mode, harmony_pool)
+        templates = get_harmony_templates(harmony_template_key(mode), harmony_pool)
     else:
-        templates = PROGRESSIONS_MINOR if mode == "minor" else PROGRESSIONS_MAJOR
+        templates = (
+            PROGRESSIONS_MINOR
+            if harmony_template_key(mode) == "minor"
+            else PROGRESSIONS_MAJOR
+        )
     base = ROLE_TO_TEMPLATE.get(narrative_role, "default")
     if harmonic_tension >= 0.75 and narrative_role in ("tension", "climax"):
         base = "tension"
@@ -144,7 +136,7 @@ def build_section_harmony(
 
 def _loop_progression(mode: str, bars_per_chord: int) -> list[ChordSpec]:
     """Al menos dos cambios de acorde en loops (benchmark: chord_changes > 0)."""
-    if mode == "minor":
+    if harmony_template_key(mode) == "minor":
         raw = [(0, "minor"), (5, "major"), (3, "minor"), (4, "dominant")]
     else:
         raw = [(0, "major"), (4, "major"), (5, "minor"), (3, "major")]
@@ -216,14 +208,14 @@ def chord_at_bar(section_harmony: SectionHarmony, bar_idx: int) -> ChordSpec:
 def roman_numeral(chord: ChordSpec, mode: str) -> str:
     numerals_minor = ["i", "ii", "III", "iv", "v", "VI", "VII"]
     numerals_major = ["I", "ii", "iii", "IV", "V", "vi", "vii"]
-    nums = numerals_minor if mode == "minor" else numerals_major
+    nums = numerals_minor if harmony_template_key(mode) == "minor" else numerals_major
     base = nums[chord.root_degree % 7]
     if chord.quality == "major" and base.islower() and base not in ("ii", "iv", "v"):
         return base.upper()
     if chord.quality == "minor" and base.isupper():
         return base.lower()
     if chord.quality == "dominant":
-        return base.upper() + "7" if mode == "minor" else base
+        return base.upper() + "7" if harmony_template_key(mode) == "minor" else base
     return base
 
 

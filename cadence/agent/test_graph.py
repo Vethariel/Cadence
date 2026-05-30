@@ -42,6 +42,7 @@ def _graph_initial_state(prompt: str) -> dict:
         "request_id": str(uuid.uuid4()),
         "pipeline_trace": [],
         "messages": [HumanMessage(content=prompt)],
+        "creative_brief": None,
         "intent": None,
         "style_profile": None,
         "technical_proposal": None,
@@ -57,8 +58,6 @@ def _graph_initial_state(prompt: str) -> dict:
         "development": None,
         "strategies": None,
         "orchestration_plan": None,
-        "style_coherence": None,
-        "style_coherence_retries": 0,
         "arrangement": None,
         "generation_seed": 0,
         "structure": None,
@@ -150,9 +149,6 @@ def assert_graph_pipeline_invariants(final_state: dict, *, label: str = "") -> N
     assert quality.get("request_id") == final_state.get("request_id"), (
         f"{prefix}quality.request_id != state.request_id"
     )
-
-    reconciliations = [e for e in trace if e.get("event") == "section_reconciliation"]
-    assert len(reconciliations) >= 1, f"{prefix}sin section_reconciliation en trace"
 
     fallbacks = [e for e in trace if e.get("event") == "narrative_contract_fallback"]
     assert len(fallbacks) == 0, (

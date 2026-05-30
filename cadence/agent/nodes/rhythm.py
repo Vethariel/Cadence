@@ -26,6 +26,8 @@ from cadence.music.segment_variation import (
     segment_index_at_bar,
 )
 from cadence.music.strategy_pools import BASS_POOL, DRUM_POOL, get_bass_pattern, get_drum_pattern
+from cadence.music.meter_theory import ms_per_step, steps_per_bar
+from cadence.music.scale_theory import bass_step_intervals
 
 
 # ── Patrones de batería por estilo ────────────────────────────
@@ -46,10 +48,12 @@ SECTION_VELOCITY = {
     "default":    {"kick": 90,  "snare": 80,  "hihat": 70},
 }
 
-# Notas de bajo por modo (intervalos desde la tónica en semitonos)
+# Notas de bajo por modo (intervalos desde la tónica en semitonos) — ver scale_theory.bass_step_intervals
 BASS_INTERVALS = {
-    "minor": [0, 0, 3, 0,  5, 0, 7, 0,  0, 0, 3, 0,  7, 0, 5, 0],
-    "major": [0, 0, 4, 0,  5, 0, 7, 0,  0, 0, 4, 0,  7, 0, 5, 0],
+    "minor": bass_step_intervals("minor"),
+    "major": bass_step_intervals("major"),
+    "dorian": bass_step_intervals("dorian"),
+    "phrygian": bass_step_intervals("phrygian"),
 }
 
 # MIDI root notes por tonalidad
@@ -61,10 +65,8 @@ KEY_MIDI_ROOT = {
 
 # ── Helpers ───────────────────────────────────────────────────
 
-def _ms_per_step(bpm: int, beats_per_bar: int = 4) -> float:
-    """Duración en ms de un step de 1/16."""
-    ms_per_beat = 60000 / bpm
-    return ms_per_beat / 4
+def _ms_per_step(bpm: int, time_signature: list[int] | None = None) -> float:
+    return ms_per_step(bpm, time_signature)
 
 
 def _select_pattern(genre_tags: list[str], drum_pattern_id: str | None = None) -> dict:
@@ -95,12 +97,13 @@ def _generate_drum_track(
     *,
     development=None,
     generation_seed: int = 0,
+    time_signature: list[int] | None = None,
 ) -> Track:
     base_pattern_id = drum_pattern_id or "default"
     base_pattern = _select_pattern(genre_tags, base_pattern_id)
     dev_map = section_development_map(development)
-    step_ms = _ms_per_step(bpm)
-    steps_per_bar = 16
+    step_ms = _ms_per_step(bpm, time_signature)
+    bar_steps = steps_per_bar(time_signature)
     events = []
     beat_index = 0
     current_t = 0
@@ -131,7 +134,7 @@ def _generate_drum_track(
                 if intent and is_last_bar and intent.transition_out != "none"
                 else "none"
             )
-            max_step = 8 if transition_out == "cut" else steps_per_bar
+            max_step = 8 if transition_out == "cut" else bar_steps
 
             for step in range(max_step):
                 eff_step = bar_variant_step(step, bar_idx, intent)
@@ -171,10 +174,11 @@ def _generate_drum_track(
                     section=section,
                     beat_index=beat_index,
                     drum_midi=DRUM_MIDI,
+                    steps_per_bar=bar_steps,
                 ))
 
-            current_t += steps_per_bar * step_ms
-            beat_index += steps_per_bar
+            current_t += bar_steps * step_ms
+            beat_index += bar_steps
 
     return Track(
         id="drums",
@@ -198,11 +202,14 @@ def _generate_bass_track(
     development=None,
     generation_seed: int = 0,
     voice_register=None,
+    time_signature: list[int] | None = None,
 ) -> Track:
-    step_ms = _ms_per_step(bpm)
-    steps_per_bar = 16
+    step_ms = _ms_per_step(bpm, time_signature)
+    bar_steps = steps_per_bar(time_signature)
     root_midi = _get_root_midi(key)
-    intervals = BASS_INTERVALS.get(mode, BASS_INTERVALS["minor"])
+    from cadence.music.scale_theory import normalize_mode
+
+    intervals = BASS_INTERVALS.get(normalize_mode(mode), BASS_INTERVALS["minor"])
     events = []
     beat_index = 0
     current_t = 0
@@ -219,8 +226,8 @@ def _generate_bass_track(
         intent = intent_map.get(section)
 
         if not bass_should_play(section, intent):
-            current_t += bars * steps_per_bar * step_ms
-            beat_index += bars * steps_per_bar
+            current_t += bars * bar_steps * step_ms
+            beat_index += bars * bar_steps
             continue
 
         density = intent.density if intent else 0.7
@@ -267,7 +274,7 @@ def _generate_bass_track(
                         section=section,
                     ))
             else:
-                for step in range(steps_per_bar):
+                for step in range(bar_steps):
                     interval = intervals[step % len(intervals)]
                     if interval > 0 or step % 4 == 0:
                         vel = base_vel if step % 4 == 0 else max(45, base_vel - 20)
@@ -281,8 +288,8 @@ def _generate_bass_track(
                             section=section,
                         ))
 
-            current_t += steps_per_bar * step_ms
-            beat_index += steps_per_bar
+            current_t += bar_steps * step_ms
+            beat_index += bar_steps
 
     return Track(
         id="bass",
@@ -310,11 +317,13 @@ def rhythm_engine_node(state: SongState) -> dict:
         key = proposal.key
         mode = proposal.mode
         genre_tags = proposal.genre_tags
+        time_signature = list(proposal.time_signature or [4, 4])
     else:
         bpm = 120
         key = "C"
         mode = "minor"
         genre_tags = intent.style_tags
+        time_signature = [4, 4]
 
     harmony = state.get("harmony")
     strategies = state.get("strategies")
@@ -334,6 +343,7 @@ def rhythm_engine_node(state: SongState) -> dict:
         drum_pattern_id=strategies.drum_pattern if strategies else None,
         development=development,
         generation_seed=gen_seed,
+        time_signature=time_signature,
     )
 
     bass = _generate_bass_track(
@@ -348,6 +358,7 @@ def rhythm_engine_node(state: SongState) -> dict:
         development=development,
         generation_seed=gen_seed,
         voice_register=voice_register,
+        time_signature=time_signature,
     )
 
     existing = [t for t in state.get("tracks", []) if t.id not in ("drums", "bass")]

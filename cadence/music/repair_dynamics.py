@@ -30,13 +30,14 @@ def apply_repair_dynamic_range(
     narrative_sections: dict | None,
     *,
     spread_boost: float = 1.45,
+    time_signature: list[int] | None = None,
 ) -> list[Track]:
     """
     Re-aplica crescendo con multiplicadores más contrastados entre secciones.
     """
     base = section_velocity_multipliers(structure.sections, narrative_sections)
     if not base:
-        return apply_crescendo(tracks, structure, bpm, narrative_sections)
+        return apply_crescendo(tracks, structure, bpm, narrative_sections, time_signature)
 
     lo = min(base.values())
     hi = max(base.values())
@@ -51,7 +52,9 @@ def apply_repair_dynamic_range(
     result: list[Track] = []
     for track in tracks:
         events = [
-            apply_crescendo_to_event(e, boosted.get(e.section, 1.0), structure, bpm)
+            apply_crescendo_to_event(
+                e, boosted.get(e.section, 1.0), structure, bpm, time_signature,
+            )
             for e in track.events
         ]
         result.append(track.model_copy(update={"events": events}))

@@ -565,9 +565,18 @@ def resolve_rhythm_patterns(
         build_genre_mix_for_rhythm,
         fallback_bass_candidates,
         fallback_drum_candidates,
+        resolve_rhythm_context_key,
     )
 
     genre_mix = build_genre_mix_for_rhythm(genre_tags)
+    rhythm_key = resolve_rhythm_context_key(
+        use_case=use_case,
+        energy_level=energy_level,
+        composition_archetype=arch,
+        genre_tags=genre_tags,
+        genre_mix=genre_mix,
+    )
+    strict_ladder = rhythm_key in ("loop", "cutscene", "game_low")
 
     if drum is None:
         rep = drum_pool_priority(
@@ -581,13 +590,16 @@ def resolve_rhythm_patterns(
             genre_mix=genre_mix,
             repertoire_priority=rep,
         )
-        drum = weighted_pick(
-            generation_seed, 3, candidates, DRUM_POOL,
-            genre_mix=genre_mix,
-            genre_boost_table=DRUM_GENRE_BOOST,
-            composition_archetype=arch, energy_level=energy_level,
-            field="drum", recent=recent,
-        )
+        if strict_ladder and candidates:
+            drum = candidates[generation_seed % len(candidates)]
+        else:
+            drum = weighted_pick(
+                generation_seed, 3, candidates, DRUM_POOL,
+                genre_mix=genre_mix,
+                genre_boost_table=DRUM_GENRE_BOOST,
+                composition_archetype=arch, energy_level=energy_level,
+                field="drum", recent=recent,
+            )
 
     if bass is None:
         rep = bass_pool_priority(
@@ -601,19 +613,28 @@ def resolve_rhythm_patterns(
             genre_mix=genre_mix,
             repertoire_priority=rep,
         )
-        bass = weighted_pick(
-            generation_seed, 7, candidates, BASS_POOL,
-            genre_mix=genre_mix,
-            genre_boost_table=BASS_GENRE_BOOST,
-            composition_archetype=arch, energy_level=energy_level,
-            field="bass", recent=recent,
-        )
+        if strict_ladder and candidates:
+            bass = candidates[generation_seed % len(candidates)]
+        else:
+            bass = weighted_pick(
+                generation_seed, 7, candidates, BASS_POOL,
+                genre_mix=genre_mix,
+                genre_boost_table=BASS_GENRE_BOOST,
+                composition_archetype=arch, energy_level=energy_level,
+                field="bass", recent=recent,
+            )
 
     return drum, bass
 
 
 def get_harmony_templates(mode: str, pool_id: str) -> dict:
-    pools = HARMONY_POOLS_MINOR if mode == "minor" else HARMONY_POOLS_MAJOR
+    from cadence.music.scale_theory import harmony_template_key
+
+    pools = (
+        HARMONY_POOLS_MINOR
+        if harmony_template_key(mode) == "minor"
+        else HARMONY_POOLS_MAJOR
+    )
     return pools.get(pool_id, pools["classic"])
 
 

@@ -27,6 +27,12 @@ dev = [
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: pipeline multi-nodo o heterogeneidad entre seeds (más lento)",
+    "benchmark: perfiles y datos de benchmark externos",
+]
+
 [tool.setuptools.packages.find]
 include = ["cadence*"]
 

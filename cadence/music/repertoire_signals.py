@@ -140,9 +140,9 @@ def bass_pool_priority(
         "orchestral_boss",
         "cinematic_cutscene",
         "ambient_loop",
-    ) or melody_texture in ("sparse", "balanced", "dense", "percussive"):
+    ):
         return resolve_voice_register_profile(
-            composition_archetype=arch or "default_game",
+            composition_archetype=arch,
             energy_level=energy_level,
             use_case=use_case,
             melody_texture=melody_texture,
@@ -296,12 +296,18 @@ def instruments_implied_by_strategies(
         echo = strategies.echo_source or "auto"
         if echo in ("melody", "arp_synth", "chord_stab"):
             implied.add("echo_synth")
+        elif echo == "auto" and energy_level >= 4 and uc == "game":
+            implied.add("echo_synth")
         if is_dense_pattern(strategies.arp_pattern, "arp") and energy_level >= 5:
             implied.add("arp_synth")
         return implied
 
     if is_dense_pattern(strategies.arp_pattern, "arp") or (
         pattern_family(strategies.arp_pattern or "") == "sixteenth"
+    ):
+        implied.add("arp_synth")
+    elif energy_level >= 5 and uc == "game" and arch not in (
+        "ambient_loop", "cinematic_cutscene", "compact_action",
     ):
         implied.add("arp_synth")
 

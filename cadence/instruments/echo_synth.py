@@ -46,7 +46,7 @@ def _compose_echo_synth(ctx: ComposeContext) -> Track | None:
     if not source.events:
         return None
 
-    bar_ms = ms_per_bar(ctx.bpm)
+    bar_ms = ms_per_bar(ctx.bpm, ctx.time_signature)
     delay_ms = int(bar_ms * 0.5)
     available = (
         {l.instrument_id for l in ctx.state.get("arrangement").layers}

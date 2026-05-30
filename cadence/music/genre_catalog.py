@@ -142,7 +142,6 @@ GENRE_ALIASES: dict[str, str] = {
     "n64": "video game music",
     "arcade game": "arcade",
     "party": "party game",
-    "super bomberman": "party game",
 }
 
 _ALL_GENRES: list[str] | None = None

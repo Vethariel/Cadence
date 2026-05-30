@@ -79,7 +79,7 @@ def test_registry_has_core_instruments():
     for required in ("drums", "bass", "melody", "pad", "fx_riser", "perc_aux", "countermelody", "echo_synth", "arp_synth", "chord_stab"):
         assert required in ids, f"{required} no registrado"
     assert get_instrument("drums").requires_llm is False
-    assert get_instrument("melody").requires_llm is True
+    assert get_instrument("melody").requires_llm is False
     print("✓ test_registry_has_core_instruments OK")
 
 
@@ -99,7 +99,7 @@ def test_arrangement_planner_adds_optional_layers():
     assert len(layer_ids) < 10, "demasiadas capas simultáneas en el plan"
     assert arrangement.layer_schedule is not None
     assert len(arrangement.layer_schedule.entries) > 0
-    assert arrangement.required_layers == ["drums", "bass", "melody"]
+    assert set(arrangement.required_layers) == set(layer_ids)
     print(f"  layers: {layer_ids}")
     print("✓ test_arrangement_planner_adds_optional_layers OK")
 

@@ -11,6 +11,7 @@ from cadence.schemas.song_state import (
     SectionHarmony,
     SectionIntent,
 )
+from cadence.music.scale_theory import harmony_template_key
 
 # Transform de desarrollo → plantilla armónica (más tensión / más reposo)
 TRANSFORM_TO_HARMONY_TEMPLATE: dict[str, str] = {
@@ -122,7 +123,7 @@ def _progression_for_segment(
     seg_bars = max(1, seg.end_bar - seg.start_bar)
     n_chords = len(raw)
     if n_chords == 0:
-        return [ChordSpec(root_degree=0, quality="minor" if mode == "minor" else "major", bars=seg_bars)]
+        return [ChordSpec(root_degree=0, quality="minor" if harmony_template_key(mode) == "minor" else "major", bars=seg_bars)]
 
     if seg.transform in ("sparse", "fragment", "pedal"):
         deg, qual = raw[0]

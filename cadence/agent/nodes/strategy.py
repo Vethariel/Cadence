@@ -7,12 +7,15 @@ from cadence.music.creative_variation import build_creative_variation_bounds
 from cadence.music.pattern_intent import derive_pattern_intent
 from cadence.music.style_archetype import infer_composition_archetype_with_reason
 from cadence.music.style_profile import build_genre_mix_from_state, effective_genre_tags
+from cadence.music.technical_proposal_apply import (
+    merge_strategies_from_proposal,
+    snap_archetype,
+)
 
 
 def strategy_planner_node(state: SongState) -> dict:
     """
-    Calcula generation_seed y elige arp/harmony/paleta desde pools.
-    drum/bass se sobrescriben en instrument_planner (elección del agente).
+    Pools por seed; los campos de TechnicalProposal del LLM tienen prioridad.
     """
     intent = state["intent"]
     structure = state["structure"]
@@ -27,13 +30,20 @@ def strategy_planner_node(state: SongState) -> dict:
     genre_tags = effective_genre_tags(state)
     energy = proposal.energy_level if proposal else 3
 
-    decision = infer_composition_archetype_with_reason(
-        style_profile=state.get("style_profile"),
-        raw_prompt=intent.raw_prompt,
-        use_case=intent.use_case,
-        energy_level=energy,
-    )
-    archetype = decision.archetype
+    llm_arch = snap_archetype(proposal.composition_archetype) if proposal else ""
+    if llm_arch:
+        archetype = llm_arch  # type: ignore[assignment]
+        arch_reason = "technical_spec.composition_archetype"
+    else:
+        decision = infer_composition_archetype_with_reason(
+            style_profile=state.get("style_profile"),
+            raw_prompt=intent.raw_prompt,
+            use_case=intent.use_case,
+            energy_level=energy,
+        )
+        archetype = decision.archetype
+        arch_reason = decision.reason
+
     genre_mix = build_genre_mix_from_state(state)
     pattern_intent = derive_pattern_intent(
         genre_mix=genre_mix,
@@ -56,6 +66,8 @@ def strategy_planner_node(state: SongState) -> dict:
         pattern_intent=pattern_intent,
         pattern_selection_audit=pattern_selection_audit,
     )
+    if proposal:
+        strategies = merge_strategies_from_proposal(strategies, proposal)
 
     out: dict = {
         "generation_seed": root_seed,
@@ -64,7 +76,7 @@ def strategy_planner_node(state: SongState) -> dict:
         "pattern_intent": pattern_intent,
         "pattern_selection_audit": pattern_selection_audit,
         "composition_archetype": archetype,
-        "archetype_reason": decision.reason,
+        "archetype_reason": arch_reason,
     }
     anchors = state.get("narrative_anchors")
     if anchors:

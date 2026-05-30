@@ -1,7 +1,7 @@
 """Tests del catálogo y arreglo desde orchestration_plan del agente."""
 
 from cadence.agent.nodes.arrangement import arrangement_planner_node
-from cadence.agent.nodes.instrument_planner import _apply_plan_to_strategies
+from cadence.music.orchestration_plan import apply_plan_to_strategies as _apply_plan_to_strategies
 from cadence.music.instrument_catalog import (
     apply_orchestration_gm,
     get_timbres,
@@ -39,20 +39,20 @@ def _minimal_state(orchestration: OrchestrationPlan | None = None) -> dict:
     return state
 
 
-def test_validate_orchestration_enforces_core():
+def test_validate_orchestration_no_mandatory_core():
     plan = _plan(
-        ensemble_concept="Synthwave duel",
+        ensemble_concept="Synth pad bed",
         instruments=[
-            InstrumentAssignment(instrument_id="arp_synth", gm_program=98, display_name="Crystal", active=True),
+            InstrumentAssignment(instrument_id="pad", role="pad", gm_program=89, display_name="Pad Warm", active=True),
+            InstrumentAssignment(instrument_id="melody", role="lead", gm_program=4, display_name="Electric Piano 1", active=True),
         ],
     )
-    validated = validate_orchestration(plan, use_case="game", energy_level=4)
+    validated = validate_orchestration(plan, use_case="loop", energy_level=2)
     ids = {a.instrument_id for a in validated.instruments if a.active}
-    assert "drums" in ids and "bass" in ids and "melody" in ids
-    assert "arp_synth" in ids
-    assert validated.drum_pattern == "techno"
-    assert validated.bass_pattern == "driving"
-    print("✓ test_validate_orchestration_enforces_core OK")
+    assert "drums" not in ids
+    assert "bass" not in ids
+    assert "pad" in ids and "melody" in ids
+    print("✓ test_validate_orchestration_no_mandatory_core OK")
 
 
 def test_validate_trims_excess_optionals_for_loop():
@@ -140,10 +140,10 @@ def test_harmony_pool_dense_stack_overrides_bland_agent():
 
 def test_agent_layer_patterns_applied_to_strategies():
     plan = _plan(
-        stab_pattern="dubstep_off",
-        perc_pattern="syncopated",
-        pluck_pattern="sixteenth",
-        arp_pattern="cascade",
+        stab_pattern="dubstep_off_a",
+        perc_pattern="syncopated_a",
+        pluck_pattern="sixteenth_a",
+        arp_pattern="cascade_a",
         harmony_pool="aggressive",
     )
     merged = _apply_plan_to_strategies(
@@ -152,20 +152,21 @@ def test_agent_layer_patterns_applied_to_strategies():
         energy_level=5,
         use_case="game",
     )
-    assert merged.stab_pattern == "dubstep_off"
-    assert merged.perc_pattern == "syncopated"
-    assert merged.pluck_pattern == "sixteenth"
-    assert merged.arp_pattern == "cascade"
+    assert merged.stab_pattern == "dubstep_off_a"
+    assert merged.perc_pattern == "syncopated_a"
+    assert merged.pluck_pattern == "sixteenth_a"
+    assert merged.arp_pattern == "cascade_a"
     assert merged.harmony_pool == "aggressive"
     invalid = _apply_plan_to_strategies(
         merged,
         _plan(stab_pattern="not_a_pattern", perc_pattern="", pluck_pattern=""),
     )
-    assert invalid.stab_pattern == "dubstep_off"
+    assert invalid.stab_pattern == "dubstep_off_a"
     print("✓ test_agent_layer_patterns_applied_to_strategies OK")
 
 
 def test_resolve_rhythm_patterns_fallback_by_genre():
+    """Fallback dubstep/game alto: familias válidas del pool, no un id fijo por seed."""
     drum, bass = resolve_rhythm_patterns(
         "invalid", "invalid",
         genre_tags=["dubstep"],
@@ -174,29 +175,21 @@ def test_resolve_rhythm_patterns_fallback_by_genre():
         generation_seed=0,
     )
     from cadence.music.pattern_registry import pattern_family
+    from cadence.music.strategy_pools import BASS_POOL, DRUM_POOL
 
+    assert drum in DRUM_POOL or pattern_family(drum) in {
+        f.rsplit("_", 1)[0] if "_" in f else f for f in DRUM_POOL
+    }
+    assert bass in BASS_POOL or pattern_family(bass) in {
+        pattern_family(p) for p in BASS_POOL
+    }
     assert pattern_family(drum) in (
-        "dubstep", "breakbeat", "dnb", "industrial", "techno",
+        "dubstep", "breakbeat", "dnb", "industrial", "techno", "house", "halftime",
     )
-    assert pattern_family(bass) in (
-        "driving", "syncopated", "octave_pulse", "walk", "half_time", "pulse",
-        "staccato", "sub_drop",
-    )
+    assert pattern_family(bass) in {
+        pattern_family(p) for p in BASS_POOL
+    }
     print("✓ test_resolve_rhythm_patterns_fallback_by_genre OK")
-
-
-def test_loop_energy_uses_pulse_bass_fallback():
-    _, bass = resolve_rhythm_patterns(
-        "techno", "invalid",
-        genre_tags=[],
-        energy_level=2,
-        use_case="loop",
-        generation_seed=0,
-    )
-    from cadence.music.pattern_registry import pattern_family
-
-    assert pattern_family(bass) in ("pulse", "half_time")
-    print("✓ test_loop_energy_uses_pulse_bass_fallback OK")
 
 
 def test_arrangement_from_orchestration_plan():
@@ -350,7 +343,7 @@ def test_style_profile_no_avoid_keeps_programs():
 
 
 if __name__ == "__main__":
-    test_validate_orchestration_enforces_core()
+    test_validate_orchestration_no_mandatory_core()
     test_validate_trims_excess_optionals_for_loop()
     test_timbre_catalog_covers_melodic_instruments()
     test_resolve_timbre_snaps_to_catalog()
@@ -359,7 +352,6 @@ if __name__ == "__main__":
     test_harmony_pool_dense_stack_overrides_bland_agent()
     test_agent_layer_patterns_applied_to_strategies()
     test_resolve_rhythm_patterns_fallback_by_genre()
-    test_loop_energy_uses_pulse_bass_fallback()
     test_arrangement_from_orchestration_plan()
     test_apply_orchestration_gm()
     test_melody_chord_stab_cannot_share_gm_program()

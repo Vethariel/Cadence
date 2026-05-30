@@ -93,22 +93,36 @@ def test_different_seeds_pick_different_strategies():
 
 
 def test_energy_biases_drum_pattern():
-    from cadence.music.pattern_batch_context import (
-        _combo_diversity_window,
-        _recent_patterns,
-    )
-
-    _recent_patterns.set(None)
-    _combo_diversity_window.set(0)
-    low = select_strategies(0, [], "minor", "loop", 1)
-    high = select_strategies(0, [], "minor", "game", 5)
+    """La escalera rítmica distingue loop bajo vs game alto (sin fijar seed)."""
     from cadence.music.pattern_registry import pattern_family
-
-    assert pattern_family(low.drum_pattern) in ("default", "halftime", "house")
-    assert pattern_family(high.drum_pattern) in (
-        "dubstep", "breakbeat", "dnb", "industrial", "techno",
+    from cadence.music.repertoire_signals import harmony_pool_priority
+    from cadence.music.rhythm_fallback_ladders import (
+        fallback_bass_candidates,
+        fallback_drum_candidates,
     )
-    assert high.harmony_pool in ("aggressive", "dance", "game")
+
+    low_drums = {
+        pattern_family(p)
+        for p in fallback_drum_candidates(use_case="loop", energy_level=1)
+    }
+    high_drums = {
+        pattern_family(p)
+        for p in fallback_drum_candidates(use_case="game", energy_level=5)
+    }
+    low_bass = {
+        pattern_family(p)
+        for p in fallback_bass_candidates(use_case="loop", energy_level=1)
+    }
+    high_bass = {
+        pattern_family(p)
+        for p in fallback_bass_candidates(use_case="game", energy_level=5)
+    }
+
+    assert low_drums <= {"default", "halftime", "house"}
+    assert high_drums & {"dubstep", "breakbeat", "dnb", "industrial", "techno"}
+    assert low_bass <= {"pulse", "half_time", "root_fifth"}
+    assert high_bass & {"driving", "syncopated", "octave_pulse", "walk", "half_time"}
+    assert "aggressive" in harmony_pool_priority(5, "game")[:3]
     print("✓ test_energy_biases_drum_pattern OK")
 
 

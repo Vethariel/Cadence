@@ -13,6 +13,7 @@ class ComposeContext:
     bpm: int = 120
     key: str = "C"
     mode: str = "minor"
+    time_signature: list[int] = field(default_factory=lambda: [4, 4])
     genre_tags: list[str] = field(default_factory=list)
 
     def active_sections(self) -> list[str]:
@@ -52,6 +53,7 @@ def build_compose_context(state: SongState, layer: LayerSpec) -> ComposeContext:
             bpm=proposal.bpm,
             key=proposal.key,
             mode=proposal.mode,
+            time_signature=list(proposal.time_signature or [4, 4]),
             genre_tags=proposal.genre_tags,
         )
     return ComposeContext(

@@ -46,6 +46,19 @@ def compose_layer(ctx: ComposeContext) -> Track | None:
         return None
     if not track.instrument_id:
         track = track.model_copy(update={"instrument_id": defn.instrument_id})
+    from cadence.music.instrument_roles import normalize_instrument_role
+
+    layer_role = ctx.layer.role
+    if layer_role == "lead" and defn.role not in ("lead", ""):
+        layer_role = defn.role
+    track_role = normalize_instrument_role(defn.instrument_id, layer_role)
+    plan = ctx.state.get("orchestration_plan")
+    if plan:
+        for entry in plan.instruments:
+            if entry.instrument_id == defn.instrument_id and entry.active:
+                track_role = normalize_instrument_role(defn.instrument_id, entry.role)
+                break
+    track = track.model_copy(update={"role": track_role})
     arrangement = ctx.state.get("arrangement")
     if arrangement and arrangement.layer_schedule and track.events:
         available = {l.instrument_id for l in arrangement.layers}

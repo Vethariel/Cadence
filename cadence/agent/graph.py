@@ -2,38 +2,24 @@ from langgraph.graph import StateGraph, END
 
 from cadence.schemas.song_state import SongState
 from cadence.observability.pipeline_log import instrument_node as _instrument
-from cadence.agent.nodes.router import music_knowledge_router
-from cadence.agent.nodes.tag_enricher import tag_enricher_node
-from cadence.agent.nodes.proposal import technical_proposal_node
-from cadence.agent.nodes.technical_parser import technical_parser_node
-from cadence.agent.nodes.narrative import narrative_planner_node
+from cadence.agent.nodes.prompt_enhancer import prompt_enhancer_node
+from cadence.agent.nodes.spec import technical_spec_node
+from cadence.agent.nodes.prepare import prepare_pipeline_node
+from cadence.agent.nodes.narrative_det import narrative_deterministic_node
 from cadence.agent.nodes.narrative_contract_node import narrative_contract_node
+from cadence.agent.nodes.structure_det import structure_deterministic_node
 from cadence.agent.nodes.align_sections import align_sections_node
 from cadence.agent.nodes.composition_policy import composition_policy_node
-from cadence.agent.nodes.planner import structure_planner_node
+from cadence.agent.nodes.strategy import strategy_planner_node
 from cadence.agent.nodes.harmony import harmony_planner_node
 from cadence.agent.nodes.development import development_planner_node
-from cadence.agent.nodes.strategy import strategy_planner_node
-from cadence.agent.nodes.instrument_planner import instrument_planner_node
-from cadence.agent.nodes.style_coherence import (
-    style_coherence_node,
-    route_after_style_coherence,
-)
+from cadence.agent.nodes.orchestration_det import orchestration_deterministic_node
 from cadence.agent.nodes.arrangement import arrangement_planner_node
 from cadence.agent.nodes.orchestra import compose_orchestra_node
 from cadence.agent.nodes.post_process import post_process_node
 from cadence.agent.nodes.validator import validator_node
 from cadence.agent.nodes.repair import repair_node, route_after_repair
 from cadence.agent.nodes.exporter import export_node
-
-
-# ── Edges condicionales ───────────────────────────────────────
-
-def route_after_tag_enricher(state: SongState) -> str:
-    """Tras enriquecer estilo: técnico pasa por parser, no técnico por proposal."""
-    if state["intent"].knowledge_level == "technical":
-        return "technical"
-    return "technical_proposal"
 
 
 def route_after_validator(state: SongState) -> str:
@@ -48,50 +34,53 @@ def route_after_validator(state: SongState) -> str:
     return "repair"
 
 
-# ── Construcción del grafo ────────────────────────────────────
-
 def build_graph():
+    """
+    Pipeline: dos LLM iniciales + teoría musical determinista.
+
+    prompt_enhancer → technical_spec → prepare → narrative → contract → structure
+    → align_sections → composition_policy → strategy → harmony → development
+    → orchestration → arrangement → compose → post → validator → export
+    """
     graph = StateGraph(SongState)
 
-    graph.add_node("router",               _instrument("router", music_knowledge_router))
-    graph.add_node("tag_enricher",         _instrument("tag_enricher", tag_enricher_node))
-    graph.add_node("technical_proposal",   _instrument("technical_proposal", technical_proposal_node))
-    graph.add_node("technical_parser",     _instrument("technical_parser", technical_parser_node))
-    graph.add_node("narrative_planner",    _instrument("narrative_planner", narrative_planner_node))
-    graph.add_node("narrative_contract",   _instrument("narrative_contract", narrative_contract_node))
-    graph.add_node("structure_planner",    _instrument("structure_planner", structure_planner_node))
-    graph.add_node("align_sections",       _instrument("align_sections", align_sections_node))
-    graph.add_node("composition_policy",   _instrument("composition_policy", composition_policy_node))
-    graph.add_node("strategy_planner",    _instrument("strategy_planner", strategy_planner_node))
-    graph.add_node("harmony_planner",      _instrument("harmony_planner", harmony_planner_node))
+    graph.add_node("prompt_enhancer", _instrument("prompt_enhancer", prompt_enhancer_node))
+    graph.add_node("technical_spec", _instrument("technical_spec", technical_spec_node))
+    graph.add_node("prepare", _instrument("prepare", prepare_pipeline_node))
+    graph.add_node("narrative_planner", _instrument("narrative_planner", narrative_deterministic_node))
+    graph.add_node("narrative_contract", _instrument("narrative_contract", narrative_contract_node))
+    graph.add_node("structure_planner", _instrument("structure_planner", structure_deterministic_node))
+    graph.add_node("align_sections", _instrument("align_sections", align_sections_node))
+    graph.add_node("composition_policy", _instrument("composition_policy", composition_policy_node))
+    graph.add_node("strategy_planner", _instrument("strategy_planner", strategy_planner_node))
+    graph.add_node("harmony_planner", _instrument("harmony_planner", harmony_planner_node))
     graph.add_node("development_planner", _instrument("development_planner", development_planner_node))
-    graph.add_node("instrument_planner",   _instrument("instrument_planner", instrument_planner_node))
-    graph.add_node("style_coherence",      _instrument("style_coherence", style_coherence_node))
-    graph.add_node("arrangement_planner",  _instrument("arrangement_planner", arrangement_planner_node))
-    graph.add_node("compose_orchestra",    _instrument("compose_orchestra", compose_orchestra_node))
-    graph.add_node("post_process",         _instrument("post_process", post_process_node))
-    graph.add_node("validator",            _instrument("validator", validator_node))
-    graph.add_node("repair",               _instrument("repair", repair_node))
-    graph.add_node("export",               _instrument("export", export_node))
+    graph.add_node("instrument_planner", _instrument("instrument_planner", orchestration_deterministic_node))
+    graph.add_node("arrangement_planner", _instrument("arrangement_planner", arrangement_planner_node))
+    graph.add_node("compose_orchestra", _instrument("compose_orchestra", compose_orchestra_node))
+    graph.add_node("post_process", _instrument("post_process", post_process_node))
+    graph.add_node("validator", _instrument("validator", validator_node))
+    graph.add_node("repair", _instrument("repair", repair_node))
+    graph.add_node("export", _instrument("export", export_node))
 
-    graph.set_entry_point("router")
+    graph.set_entry_point("prompt_enhancer")
 
-    graph.add_edge("router",                 "tag_enricher")
-    graph.add_edge("technical_proposal",   "narrative_planner")
-    graph.add_edge("technical_parser",     "narrative_planner")
-    graph.add_edge("narrative_planner",    "narrative_contract")
-    graph.add_edge("narrative_contract",   "structure_planner")
-    graph.add_edge("structure_planner",    "align_sections")
-    graph.add_edge("align_sections",       "composition_policy")
-    graph.add_edge("composition_policy",   "strategy_planner")
-    graph.add_edge("strategy_planner",     "harmony_planner")
-    graph.add_edge("harmony_planner",      "development_planner")
-    graph.add_edge("development_planner",  "instrument_planner")
-    graph.add_edge("instrument_planner",   "style_coherence")
-    graph.add_edge("arrangement_planner",  "compose_orchestra")
-    graph.add_edge("compose_orchestra",    "post_process")
-    graph.add_edge("post_process",         "validator")
-    graph.add_edge("export",               END)
+    graph.add_edge("prompt_enhancer", "technical_spec")
+    graph.add_edge("technical_spec", "prepare")
+    graph.add_edge("prepare", "narrative_planner")
+    graph.add_edge("narrative_planner", "narrative_contract")
+    graph.add_edge("narrative_contract", "structure_planner")
+    graph.add_edge("structure_planner", "align_sections")
+    graph.add_edge("align_sections", "composition_policy")
+    graph.add_edge("composition_policy", "strategy_planner")
+    graph.add_edge("strategy_planner", "harmony_planner")
+    graph.add_edge("harmony_planner", "development_planner")
+    graph.add_edge("development_planner", "instrument_planner")
+    graph.add_edge("instrument_planner", "arrangement_planner")
+    graph.add_edge("arrangement_planner", "compose_orchestra")
+    graph.add_edge("compose_orchestra", "post_process")
+    graph.add_edge("post_process", "validator")
+    graph.add_edge("export", END)
 
     graph.add_conditional_edges(
         "repair",
@@ -99,23 +88,6 @@ def build_graph():
         {
             "compose_orchestra": "compose_orchestra",
             "post_process": "post_process",
-            "arrangement_planner": "arrangement_planner",
-        },
-    )
-
-    graph.add_conditional_edges(
-        "tag_enricher",
-        route_after_tag_enricher,
-        {
-            "technical":          "technical_parser",
-            "technical_proposal": "technical_proposal",
-        },
-    )
-    graph.add_conditional_edges(
-        "style_coherence",
-        route_after_style_coherence,
-        {
-            "instrument_planner": "instrument_planner",
             "arrangement_planner": "arrangement_planner",
         },
     )

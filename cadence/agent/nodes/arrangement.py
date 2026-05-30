@@ -10,15 +10,6 @@ from cadence.music.creative_variation import clamp_optional_layer_ids
 from cadence.music.narrative_anchors import density_floor
 from cadence.music.narrative_contract import contract_section_intent_map
 from cadence.music.seed_policy import seed_for_state
-
-
-def _intent_map_for_state(state: SongState) -> dict:
-    return contract_section_intent_map(
-        state.get("narrative"),
-        state.get("narrative_contract"),
-        context="arrangement_planner",
-        state=state,
-    )
 from cadence.music.instrument_catalog import active_instrument_ids, select_fallback_lead_layers
 from cadence.music.repertoire_signals import (
     instruments_implied_by_strategies,
@@ -46,7 +37,21 @@ from cadence.music.orchestral_arrangement import (
     orchestral_boss_active,
     orchestral_density_threshold,
 )
+from cadence.music.orchestral_stack_policy import (
+    assign_orchestral_layer_sections,
+    effective_texture_mode_for_schedule,
+    orchestral_stack_active,
+)
 from cadence.music.texture_policy import arrangement_required_layers
+
+
+def _intent_map_for_state(state: SongState) -> dict:
+    return contract_section_intent_map(
+        state.get("narrative"),
+        state.get("narrative_contract"),
+        context="arrangement_planner",
+        state=state,
+    )
 
 CORE_LAYERS = [
     LayerSpec(
@@ -84,7 +89,7 @@ LAYER_DEFAULTS: dict[str, tuple[str, float, float]] = {
     "perc_aux": ("loop_1bar", -12.0, DENSITY_PERC),
     "fx_riser": ("one_shot", -8.0, 0.0),
     "countermelody": ("phrase_4bar", -11.0, DENSITY_COUNTER),
-    "echo_synth": ("generative_llm", -14.0, DENSITY_ECHO),
+    "echo_synth": ("loop_1bar", -14.0, DENSITY_ECHO),
     "arp_synth": ("loop_1bar", -12.0, DENSITY_ARP),
     "synth_pluck": ("loop_1bar", -11.0, DENSITY_PLUCK),
 }
@@ -97,6 +102,16 @@ def _mix_for(plan: OrchestrationPlan | None, instrument_id: str, default: float)
         if a.instrument_id == instrument_id and a.active:
             return a.mix_level
     return default
+
+
+def _role_for(instrument_id: str, plan: OrchestrationPlan | None) -> str:
+    if plan:
+        for entry in plan.instruments:
+            if entry.instrument_id == instrument_id and entry.active:
+                return entry.role
+    from cadence.music.instrument_roles import default_role_for_instrument
+
+    return default_role_for_instrument(instrument_id)
 
 
 def _layer_spec(
@@ -112,6 +127,7 @@ def _layer_spec(
     )
     return LayerSpec(
         instrument_id=instrument_id,
+        role=_role_for(instrument_id, plan),  # type: ignore[arg-type]
         active_sections=active_sections,
         pattern_strategy=strategy,
         mix_level=_mix_for(plan, instrument_id, default_mix),
@@ -158,6 +174,7 @@ def _effective_instruments(state: SongState, plan: OrchestrationPlan) -> set[str
         use_case=intent.use_case,
         composition_archetype=archetype,
         max_supports=max_supports,
+        protected=active_instrument_ids(plan),
     )
     if archetype == "orchestral_boss":
         capped = apply_orchestral_boss_instruments(capped, energy)
@@ -173,7 +190,8 @@ def _effective_instruments(state: SongState, plan: OrchestrationPlan) -> set[str
     capped = resolve_ensemble_conflicts(capped)
     if "restore_optional_layers" in repair_actions:
         return capped
-    return clamp_optional_layer_ids(capped, state.get("creative_variation"))
+    capped = clamp_optional_layer_ids(capped, state.get("creative_variation"))
+    return capped | active_instrument_ids(plan)
 
 
 def _ensure_texture_bed_layers(
@@ -188,21 +206,9 @@ def _ensure_texture_bed_layers(
     all_sections = list(structure.sections)
     out = list(layers)
     if "pad" not in ids:
-        out.append(LayerSpec(
-            instrument_id="pad",
-            active_sections=all_sections or ["*"],
-            pattern_strategy="chord_sustain",
-            mix_level=-14.0,
-            min_density=0.0,
-        ))
+        out.append(_layer_spec("pad", all_sections or ["*"], None))
     if "bass" not in ids:
-        out.append(LayerSpec(
-            instrument_id="bass",
-            active_sections=["*"],
-            pattern_strategy="loop_1bar",
-            mix_level=-6.0,
-            min_density=0.0,
-        ))
+        out.append(_layer_spec("bass", ["*"], None))
     return out
 
 
@@ -224,76 +230,69 @@ def _build_layers_from_orchestration(
         if core in chosen:
             layers.append(_layer_spec(core, ["*"], plan))
 
-    pad_sections = []
-    chord_stab_sections = []
-    perc_sections = []
     fx_sections = []
-    counter_sections = []
-    echo_sections = []
-    arp_sections = []
-
     for section_id in structure.sections:
         sec_intent = intent_map.get(section_id)
-        anchors = state.get("narrative_anchors")
-        density = sec_intent.density if sec_intent else 0.5
-        pad_floor = density_floor(anchors, section_id, 0.25)
-        if orchestral:
-            pad_floor = orchestral_density_threshold(pad_floor, energy)
-            stab_floor = orchestral_density_threshold(DENSITY_CHORD_STAB, energy)
-            counter_floor = orchestral_density_threshold(DENSITY_COUNTER, energy)
-            arp_floor = orchestral_density_threshold(DENSITY_ARP, energy)
-            perc_floor = orchestral_density_threshold(DENSITY_PERC, energy)
-        else:
-            stab_floor = DENSITY_CHORD_STAB
-            counter_floor = DENSITY_COUNTER
-            arp_floor = DENSITY_ARP
-            perc_floor = DENSITY_PERC
-
-        if density >= pad_floor and "pad" in chosen:
-            pad_sections.append(section_id)
-        if density >= stab_floor and "chord_stab" in chosen:
-            chord_stab_sections.append(section_id)
-        if density >= perc_floor and section_id in HIGH_ENERGY_SECTIONS and "perc_aux" in chosen:
-            perc_sections.append(section_id)
         if sec_intent and sec_intent.transition_out in FX_TRANSITIONS and "fx_riser" in chosen:
             fx_sections.append(section_id)
-        if density >= counter_floor and "countermelody" in chosen:
-            counter_sections.append(section_id)
-        if density >= DENSITY_ECHO and "echo_synth" in chosen:
-            echo_sections.append(section_id)
-        if density >= arp_floor and "arp_synth" in chosen:
-            arp_sections.append(section_id)
 
-    pluck_sections = []
-    for section_id in structure.sections:
-        sec_intent = intent_map.get(section_id)
-        density = sec_intent.density if sec_intent else 0.5
-        if (
-            density >= DENSITY_PLUCK
-            and section_id in HIGH_ENERGY_SECTIONS
-            and "synth_pluck" in chosen
-        ):
-            pluck_sections.append(section_id)
+    anchors = state.get("narrative_anchors")
+    pad_floor = orchestral_density_threshold(0.25, energy) if orchestral else 0.25
+    stab_floor = orchestral_density_threshold(DENSITY_CHORD_STAB, energy) if orchestral else DENSITY_CHORD_STAB
+    counter_floor = orchestral_density_threshold(DENSITY_COUNTER, energy) if orchestral else DENSITY_COUNTER
+    arp_floor = orchestral_density_threshold(DENSITY_ARP, energy) if orchestral else DENSITY_ARP
+    perc_floor = orchestral_density_threshold(DENSITY_PERC, energy) if orchestral else DENSITY_PERC
 
     if orchestral:
+        section_map = assign_orchestral_layer_sections(
+            structure,
+            intent_map,
+            chosen,
+            energy_level=energy,
+            pad_floor=pad_floor,
+            stab_floor=stab_floor,
+            counter_floor=counter_floor,
+            arp_floor=arp_floor,
+            echo_floor=DENSITY_ECHO,
+            perc_floor=perc_floor,
+        )
+        pad_sections = section_map["pad"]
+        chord_stab_sections = section_map["chord_stab"]
+        perc_sections = section_map["perc_aux"]
+        counter_sections = section_map["countermelody"]
+        echo_sections = section_map["echo_synth"]
+        arp_sections = section_map["arp_synth"]
+        pluck_sections = section_map["synth_pluck"]
+    else:
+        pad_sections = []
+        chord_stab_sections = []
+        perc_sections = []
+        counter_sections = []
+        echo_sections = []
+        arp_sections = []
+        pluck_sections = []
         for section_id in structure.sections:
             sec_intent = intent_map.get(section_id)
-            if not sec_intent:
-                continue
-            heavy = (
-                sec_intent.narrative_role in ("climax", "tension", "drop", "chorus")
-                or sec_intent.density >= 0.5
-            )
-            if not heavy:
-                continue
-            if "pad" in chosen and section_id not in pad_sections:
+            density = sec_intent.density if sec_intent else 0.5
+            pf = density_floor(anchors, section_id, pad_floor)
+            if density >= pf and "pad" in chosen:
                 pad_sections.append(section_id)
-            if "chord_stab" in chosen and section_id not in chord_stab_sections:
+            if density >= stab_floor and "chord_stab" in chosen:
                 chord_stab_sections.append(section_id)
-            if "countermelody" in chosen and section_id not in counter_sections:
+            if density >= perc_floor and section_id in HIGH_ENERGY_SECTIONS and "perc_aux" in chosen:
+                perc_sections.append(section_id)
+            if density >= counter_floor and "countermelody" in chosen:
                 counter_sections.append(section_id)
-            if "arp_synth" in chosen and section_id not in arp_sections:
+            if density >= DENSITY_ECHO and "echo_synth" in chosen:
+                echo_sections.append(section_id)
+            if density >= arp_floor and "arp_synth" in chosen:
                 arp_sections.append(section_id)
+            if (
+                density >= DENSITY_PLUCK
+                and section_id in HIGH_ENERGY_SECTIONS
+                and "synth_pluck" in chosen
+            ):
+                pluck_sections.append(section_id)
 
     optional_sections = [
         ("pad", pad_sections),
@@ -354,12 +353,25 @@ def _build_layers_deterministic(state: SongState) -> list[LayerSpec]:
     genre_tags = effective_genre_tags(state)
     seed = state.get("generation_seed", 0)
 
+    plan = state.get("orchestration_plan")
     allowed_leads = select_fallback_lead_layers(
         use_case=use_case,
         energy_level=energy,
         genre_tags=genre_tags,
         generation_seed=seed,
     )
+    archetype = get_composition_archetype(state)
+    strategies = state.get("strategies")
+    if strategies:
+        implied = instruments_implied_by_strategies(
+            strategies,
+            energy_level=energy,
+            use_case=use_case,
+            composition_archetype=archetype,
+        )
+        allowed_leads |= implied & {
+            "echo_synth", "arp_synth", "countermelody", "chord_stab", "synth_pluck",
+        }
 
     profile = state.get("style_profile")
     if percussion_suppressed(
@@ -368,22 +380,14 @@ def _build_layers_deterministic(state: SongState) -> list[LayerSpec]:
         style_profile=profile,
     ):
         layers = [
-            LayerSpec(
-                instrument_id="bass",
-                active_sections=["*"],
-                pattern_strategy="loop_1bar",
-                mix_level=-6.0,
-            ),
-            LayerSpec(
-                instrument_id="melody",
-                active_sections=["*"],
-                pattern_strategy="phrase_4bar",
-                mix_level=-8.0,
-                min_density=0.2,
-            ),
+            _layer_spec("bass", ["*"], plan),
+            _layer_spec("melody", ["*"], plan, min_density=0.2),
         ]
     else:
-        layers = list(CORE_LAYERS)
+        layers = [
+            _layer_spec(core, ["*"], plan)
+            for core in ("drums", "bass", "melody")
+        ]
 
     pad_sections = []
     chord_stab_sections = []
@@ -404,40 +408,20 @@ def _build_layers_deterministic(state: SongState) -> list[LayerSpec]:
             fx_sections.append(section_id)
 
     if pad_sections:
-        layers.append(LayerSpec(
-            instrument_id="pad",
-            active_sections=pad_sections,
-            pattern_strategy="chord_sustain",
-            mix_level=-14.0,
-            min_density=0.25,
-        ))
+        layers.append(_layer_spec("pad", pad_sections, plan, min_density=0.25))
 
     if chord_stab_sections:
-        layers.append(LayerSpec(
-            instrument_id="chord_stab",
-            active_sections=chord_stab_sections,
-            pattern_strategy="loop_1bar",
-            mix_level=-13.0,
-            min_density=DENSITY_CHORD_STAB,
+        layers.append(_layer_spec(
+            "chord_stab", chord_stab_sections, plan, min_density=DENSITY_CHORD_STAB,
         ))
 
     if perc_sections:
-        layers.append(LayerSpec(
-            instrument_id="perc_aux",
-            active_sections=perc_sections,
-            pattern_strategy="loop_1bar",
-            mix_level=-12.0,
-            min_density=DENSITY_PERC,
+        layers.append(_layer_spec(
+            "perc_aux", perc_sections, plan, min_density=DENSITY_PERC,
         ))
 
     if fx_sections:
-        layers.append(LayerSpec(
-            instrument_id="fx_riser",
-            active_sections=fx_sections,
-            pattern_strategy="one_shot",
-            mix_level=-8.0,
-            min_density=0.0,
-        ))
+        layers.append(_layer_spec("fx_riser", fx_sections, plan, min_density=0.0))
 
     if "countermelody" in allowed_leads:
         counter_sections = [
@@ -445,12 +429,8 @@ def _build_layers_deterministic(state: SongState) -> list[LayerSpec]:
             if (intent_map.get(s) and intent_map[s].density >= DENSITY_COUNTER)
         ]
         if counter_sections:
-            layers.append(LayerSpec(
-                instrument_id="countermelody",
-                active_sections=counter_sections,
-                pattern_strategy="phrase_4bar",
-                mix_level=-11.0,
-                min_density=DENSITY_COUNTER,
+            layers.append(_layer_spec(
+                "countermelody", counter_sections, plan, min_density=DENSITY_COUNTER,
             ))
 
     if "echo_synth" in allowed_leads:
@@ -459,12 +439,8 @@ def _build_layers_deterministic(state: SongState) -> list[LayerSpec]:
             if (intent_map.get(s) and intent_map[s].density >= DENSITY_ECHO)
         ]
         if echo_sections:
-            layers.append(LayerSpec(
-                instrument_id="echo_synth",
-                active_sections=echo_sections,
-                pattern_strategy="generative_llm",
-                mix_level=-14.0,
-                min_density=DENSITY_ECHO,
+            layers.append(_layer_spec(
+                "echo_synth", echo_sections, plan, min_density=DENSITY_ECHO,
             ))
 
     if "arp_synth" in allowed_leads:
@@ -473,12 +449,8 @@ def _build_layers_deterministic(state: SongState) -> list[LayerSpec]:
             if (intent_map.get(s) and intent_map[s].density >= DENSITY_ARP)
         ]
         if arp_sections:
-            layers.append(LayerSpec(
-                instrument_id="arp_synth",
-                active_sections=arp_sections,
-                pattern_strategy="loop_1bar",
-                mix_level=-12.0,
-                min_density=DENSITY_ARP,
+            layers.append(_layer_spec(
+                "arp_synth", arp_sections, plan, min_density=DENSITY_ARP,
             ))
 
     if "synth_pluck" in allowed_leads:
@@ -491,12 +463,8 @@ def _build_layers_deterministic(state: SongState) -> list[LayerSpec]:
             )
         ]
         if pluck_sections:
-            layers.append(LayerSpec(
-                instrument_id="synth_pluck",
-                active_sections=pluck_sections,
-                pattern_strategy="loop_1bar",
-                mix_level=-11.0,
-                min_density=DENSITY_PLUCK,
+            layers.append(_layer_spec(
+                "synth_pluck", pluck_sections, plan, min_density=DENSITY_PLUCK,
             ))
 
     return _ensure_texture_bed_layers(layers, structure, use_case)
@@ -536,8 +504,10 @@ def arrangement_planner_node(state: SongState) -> dict:
     layer_ids = [l.instrument_id for l in layers]
     optional_count = len([i for i in layer_ids if i not in ("drums", "bass", "melody")])
     archetype = get_composition_archetype(state)
-    if archetype == "orchestral_boss" and orchestral_boss_active(energy):
-        texture_mode = "simultaneous"
+    if orchestral_stack_active(archetype, energy):
+        texture_mode = effective_texture_mode_for_schedule(
+            texture_mode, composition_archetype=archetype, energy_level=energy,
+        )
     elif (
         development
         and use_case == "game"
@@ -556,12 +526,17 @@ def arrangement_planner_node(state: SongState) -> dict:
         development=development,
         texture_mode=texture_mode,
         percussion_suppressed=suppress_drums,
+        composition_archetype=archetype,
     )
 
     arrangement = ArrangementPlan(
         layers=layers,
         layer_schedule=schedule,
-        required_layers=arrangement_required_layers(use_case, suppress_drums),
+        required_layers=arrangement_required_layers(
+            use_case,
+            suppress_drums,
+            active_instrument_ids=set(layer_ids),
+        ),
     )
 
     from cadence.music.voice_register_profile import profile_from_state

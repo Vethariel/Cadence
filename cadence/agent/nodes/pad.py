@@ -1,5 +1,6 @@
 """Compositor determinista de pad — acordes sostenidos desde HarmonyPlan."""
 
+from cadence.music.meter_theory import ms_per_bar as meter_ms_per_bar, steps_per_bar as meter_steps_per_bar
 from cadence.schemas.song_state import HarmonyPlan, SongState, Track, RhythmEvent
 from cadence.music.development_theory import section_development_map
 from cadence.music.harmony_theory import (
@@ -12,9 +13,6 @@ from cadence.music.narrative_contract import contract_section_intent_map
 from cadence.music.segment_variation import segment_at_bar
 from cadence.schemas.song_state import SectionDevelopment, SectionIntent
 
-
-def _ms_per_bar(bpm: int) -> float:
-    return (60000 / bpm) * 4
 
 
 def _pad_should_play(section: str, density: float) -> bool:
@@ -31,14 +29,16 @@ def _generate_pad_track(
     intent_map: dict[str, SectionIntent] | None = None,
     *,
     dev_map: dict[str, SectionDevelopment] | None = None,
+    time_signature: list[int] | None = None,
 ) -> Track:
     harmony_map = section_harmony_map(harmony)
     intent_map = intent_map or {}
-    ms_per_bar = _ms_per_bar(bpm)
+    ts = time_signature or [4, 4]
+    ms_per_bar = meter_ms_per_bar(bpm, ts)
     events: list[RhythmEvent] = []
     current_t = 0.0
     beat_index = 0
-    steps_per_bar = 16
+    steps_per_bar = meter_steps_per_bar(ts)
 
     for section in sections:
         bars = bars_per_section.get(section, 4)
@@ -109,6 +109,7 @@ def pad_composer_node(state: SongState) -> dict:
         return {"tracks": existing}
 
     bpm = proposal.bpm if proposal else 120
+    time_signature = list(proposal.time_signature) if proposal else [4, 4]
     intent_map = contract_section_intent_map(
         state.get("narrative"),
         state.get("narrative_contract"),
@@ -125,6 +126,7 @@ def pad_composer_node(state: SongState) -> dict:
         harmony=harmony,
         intent_map=intent_map,
         dev_map=section_development_map(state.get("development")),
+        time_signature=time_signature,
     )
 
     existing = [t for t in state.get("tracks", []) if t.id != "pad"]

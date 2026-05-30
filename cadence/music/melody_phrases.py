@@ -132,9 +132,13 @@ def phrases_to_events(
     scale_pitches: list[int],
     beat_index_start: int,
     development: SectionDevelopment | None = None,
+    time_signature: list[int] | None = None,
 ) -> tuple[list[RhythmEvent], float, int]:
     """Expande frases 2-4 compases cubriendo toda la sección con desarrollo."""
-    step_ms = (60000 / bpm) / 4
+    from cadence.music.meter_theory import ms_per_step, steps_per_bar as meter_steps_per_bar
+
+    step_ms = ms_per_step(bpm, time_signature)
+    bar_steps = meter_steps_per_bar(time_signature)
     events: list[RhythmEvent] = []
     current_t = start_t
     beat_index = beat_index_start
@@ -142,7 +146,7 @@ def phrases_to_events(
     cycle_idx = 0
 
     if not phrases:
-        return events, current_t + total_bars * 16 * step_ms, beat_index + total_bars * 16
+        return events, current_t + total_bars * bar_steps * step_ms, beat_index + total_bars * bar_steps
 
     while bar_idx < total_bars:
         bar_dev = development_for_bar(development, bar_idx) if development else None
@@ -150,7 +154,7 @@ def phrases_to_events(
             if bar_idx >= total_bars:
                 break
             phrase_bars = min(phrase.bars, total_bars - bar_idx)
-            total_steps = phrase_bars * 16
+            total_steps = phrase_bars * bar_steps
             pattern = fix_phrase_steps(phrase.pattern, total_steps)
 
             if bar_dev:

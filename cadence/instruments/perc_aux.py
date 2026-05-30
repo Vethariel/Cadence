@@ -1,5 +1,6 @@
 """Percusión auxiliar — claps y shakers en secciones densas."""
 
+from cadence.music.meter_theory import ms_per_step, steps_per_bar as meter_steps_per_bar
 from cadence.instruments.context import ComposeContext
 from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.music.narrative_contract import section_intent_map_from_state
@@ -11,9 +12,6 @@ CLAP = 39
 SHAKER = 42
 
 
-def _ms_per_step(bpm: int) -> float:
-    return (60000 / bpm) / 4
-
 
 def _compose_perc_aux(ctx: ComposeContext) -> Track | None:
     structure = ctx.state["structure"]
@@ -24,8 +22,8 @@ def _compose_perc_aux(ctx: ComposeContext) -> Track | None:
     perc_pattern = strategies.perc_pattern if strategies else None
     clap_steps = perc_clap_steps(perc_pattern, seed)
 
-    step_ms = _ms_per_step(ctx.bpm)
-    steps_per_bar = 16
+    step_ms = ms_per_step(ctx.bpm, ctx.time_signature)
+    steps_per_bar = meter_steps_per_bar(ctx.time_signature)
     events: list[RhythmEvent] = []
     current_t = 0.0
     beat_index = 0

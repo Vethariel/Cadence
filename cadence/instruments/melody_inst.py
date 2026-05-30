@@ -14,6 +14,6 @@ register(InstrumentDefinition(
     display_name="Melody",
     role="lead",
     midi_channel=0,
-    requires_llm=True,
+    requires_llm=False,
     compose=_compose_melody,
 ))

@@ -76,13 +76,14 @@ def quantize_melody_events_to_harmony(
     key: str,
     mode: str,
     bpm: int,
+    time_signature: list[int] | None = None,
 ) -> list[RhythmEvent]:
     """Ajusta cada nota melódica al tono de acorde más cercano en su compás."""
     if not events or not harmony:
         return events
 
     harmony_map = section_harmony_map(harmony)
-    bar_ms = ms_per_bar(bpm)
+    bar_ms = ms_per_bar(bpm, time_signature)
     section_start_ms: dict[str, float] = {}
     cursor = 0.0
     for sid in structure_sections:
@@ -190,9 +191,13 @@ def apply_lead_support_cap(
     supports = [i for i in LEAD_SUPPORT_KEEP_ORDER if i in active_ids]
     kept: list[str] = []
     for iid in supports:
+        if iid in protected:
+            if iid not in kept:
+                kept.append(iid)
+            continue
         if len(kept) >= max_supports:
             break
-        if iid in protected or iid not in kept:
+        if iid not in kept:
             kept.append(iid)
 
     from cadence.music.ensemble_policy import ENSEMBLE_INSTRUMENT_IDS
@@ -205,9 +210,10 @@ def apply_lead_support_cap(
     uc = (use_case or "game").lower()
     arch = composition_archetype or ""
     if "echo_synth" in active_ids:
-        if arch == "compact_action":
-            if "echo_synth" in protected:
-                result.add("echo_synth")
+        if "echo_synth" in protected:
+            result.add("echo_synth")
+        elif arch == "compact_action":
+            pass
         elif len(kept) >= 2 or (energy_level >= 4 and uc == "game"):
             result.add("echo_synth")
 

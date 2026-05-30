@@ -61,12 +61,14 @@ def _merge_pending(
     return sorted(base + extra, key=lambda x: (x[0], 0 if x[1] == "remove" else 1, x[2]))
 
 
-def ms_per_bar(bpm: int) -> float:
-    return (60000 / bpm) * 4
+def ms_per_bar(bpm: int, time_signature: list[int] | None = None) -> float:
+    from cadence.music.meter_theory import ms_per_bar as _ms_per_bar
+
+    return _ms_per_bar(bpm, time_signature)
 
 
-def global_bar_from_ms(t_ms: int, bpm: int) -> int:
-    return int(t_ms // ms_per_bar(bpm))
+def global_bar_from_ms(t_ms: int, bpm: int, time_signature: list[int] | None = None) -> int:
+    return int(t_ms // ms_per_bar(bpm, time_signature))
 
 
 def section_start_bars(structure: SongStructure) -> dict[str, int]:
@@ -119,6 +121,8 @@ def _plan_section_layers(
     available: set[str],
     active: set[str],
     thresholds: dict[str, float] | None = None,
+    composition_archetype: str | None = None,
+    section_index: int = 0,
 ) -> tuple[list[str], list[str]]:
     """Capas a quitar al inicio de sección y capas a añadir (stagger vía _entry_stagger)."""
     th = thresholds or _layer_thresholds({})
@@ -158,16 +162,31 @@ def _plan_section_layers(
     ):
         candidates.append("perc_aux")
 
+    from cadence.music.orchestral_stack_policy import (
+        orchestral_stack_active,
+        rotating_support_for_section,
+    )
+
+    orch = orchestral_stack_active(composition_archetype)
+    rot = (
+        rotating_support_for_section(section_index, role, chosen=available)
+        if orch
+        else None
+    )
+
     if (
         density >= th["counter"]
         and role in ("tension", "climax", "establish")
         and "countermelody" in available
         and "countermelody" not in active
+        and (not orch or rot in (None, "countermelody"))
     ):
         candidates.append("countermelody")
 
     if "echo_synth" in available and "echo_synth" not in active:
-        if role == "climax" and density >= th["echo"]:
+        if orch and rot != "echo_synth":
+            pass
+        elif role == "climax" and density >= th["echo"]:
             candidates.append("echo_synth")
         elif global_bar >= climax_bar - 4 and density >= th["echo"]:
             candidates.append("echo_synth")
@@ -177,8 +196,17 @@ def _plan_section_layers(
         and role in ("tension", "climax", "transition")
         and "arp_synth" in available
         and "arp_synth" not in active
+        and (not orch or rot in (None, "arp_synth"))
     ):
         candidates.append("arp_synth")
+
+    if orch and rot and rot not in candidates and rot in available and rot not in active:
+        if rot == "countermelody" and density >= th["counter"]:
+            candidates.append("countermelody")
+        elif rot == "arp_synth" and density >= th["arp"]:
+            candidates.append("arp_synth")
+        elif rot == "echo_synth" and density >= th["echo"]:
+            candidates.append("echo_synth")
 
     if (
         density >= th["pluck"]
@@ -213,6 +241,7 @@ def build_layer_schedule(
     development: object | None = None,
     texture_mode: str = "staggered",
     percussion_suppressed: bool = False,
+    composition_archetype: str | None = None,
 ) -> LayerSchedule:
     """
     Construye entradas/salidas de capas a lo largo de la pieza.
@@ -234,6 +263,13 @@ def build_layer_schedule(
     active: set[str] = set(core_ids) & available
     del genre_tags
     genre_adj = _density_thresholds_for_piece(energy_level, use_case)
+    from cadence.music.orchestral_stack_policy import (
+        orchestral_stack_active,
+        schedule_thresholds_orchestral,
+    )
+
+    if orchestral_stack_active(composition_archetype, energy_level):
+        genre_adj = schedule_thresholds_orchestral(genre_adj, energy_level)
     thresholds = _layer_thresholds(genre_adj)
     if texture_mode == "bedded":
         thresholds = {**thresholds, "pad": min(thresholds.get("pad", 0.25), 0.12)}
@@ -260,6 +296,8 @@ def build_layer_schedule(
             available=available,
             active=active,
             thresholds=thresholds,
+            composition_archetype=composition_archetype,
+            section_index=structure.sections.index(section_id),
         )
 
         if texture_mode == "bedded":
@@ -275,7 +313,9 @@ def build_layer_schedule(
             active.discard(lid)
 
         for lid in candidates:
-            stagger = entry_stagger_for_texture(texture_mode, lid, role)
+            stagger = entry_stagger_for_texture(
+                texture_mode, lid, role, composition_archetype=composition_archetype,
+            )
             entry_bar = min(
                 global_bar + stagger,
                 max(global_bar, section_end - 1),
@@ -303,6 +343,7 @@ def build_layer_schedule(
             intent_map,
             use_case=use_case,
             texture_mode=texture_mode,
+            composition_archetype=composition_archetype,
         )
         pending = _merge_pending(pending, segment_pending)
 

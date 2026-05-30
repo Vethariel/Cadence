@@ -101,13 +101,12 @@ def test_clamp_optional_layers():
 def test_node_seeds_stable_and_distinct():
     ns = build_node_seeds(12345)
     assert ns.generation_seed == 12345
-    assert ns.seed_router == derive_node_seed(12345, "router")
-    assert ns.seed_melody != ns.seed_router
+    assert ns.seed_prompt_enhancer == derive_node_seed(12345, "prompt_enhancer")
+    assert ns.seed_melody != ns.seed_prompt_enhancer
 
 
 def test_temperature_policy():
-    assert node_temperature("structure_planner") < node_temperature("melody")
-    assert node_temperature("technical_parser") < node_temperature("instrument_planner")
+    assert node_temperature("technical_spec") < node_temperature("prompt_enhancer")
 
 
 if __name__ == "__main__":

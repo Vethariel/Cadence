@@ -1,4 +1,4 @@
-"""Anclas narrativas, límites creativos y subsemillas — tras align_sections."""
+"""Anclas narrativas, límites creativos y subsemillas — tras structure_planner."""
 
 from cadence.music.narrative_anchors import build_narrative_anchors
 from cadence.music.seed_policy import build_node_seeds

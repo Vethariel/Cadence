@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from cadence.agent.nodes.narrative_apply import melody_should_play
+from cadence.music.meter_theory import ms_per_bar as meter_ms_per_bar, ms_per_step, steps_per_bar as meter_steps_per_bar
 from cadence.instruments.context import ComposeContext
 from cadence.instruments.registry import InstrumentDefinition, register
 from cadence.music.development_theory import development_for_bar, section_development_map
@@ -18,13 +19,6 @@ from cadence.music.seed_policy import seed_for_state
 from cadence.music.segment_variation import segment_index_at_bar
 from cadence.schemas.song_state import RhythmEvent, Track
 
-
-def _ms_per_step(bpm: int) -> float:
-    return (60000 / bpm) / 4
-
-
-def _ms_per_bar(bpm: int) -> float:
-    return (60000 / bpm) * 4
 
 
 @dataclass(frozen=True)
@@ -93,8 +87,8 @@ def _compose_ensemble_voice(ctx: ComposeContext, spec: EnsembleVoiceSpec) -> Tra
     strategies = ctx.state.get("strategies")
     seed = seed_for_state(ctx.state, spec.instrument_id) or ctx.state.get("generation_seed", 0)
 
-    step_ms = _ms_per_step(ctx.bpm)
-    steps_per_bar = 16
+    step_ms = ms_per_step(ctx.bpm, ctx.time_signature)
+    steps_per_bar = meter_steps_per_bar(ctx.time_signature)
     events: list[RhythmEvent] = []
     current_t = 0.0
     beat_index = 0
@@ -127,7 +121,7 @@ def _compose_ensemble_voice(ctx: ComposeContext, spec: EnsembleVoiceSpec) -> Tra
                 beat_index += bars * steps_per_bar
                 continue
             base_vel = int((32 + density * 32) * spec.velocity_scale)
-            ms_bar = _ms_per_bar(ctx.bpm)
+            ms_bar = meter_ms_per_bar(ctx.bpm, ctx.time_signature)
             for bar_idx in range(bars):
                 chord = chord_at_bar(section_h, bar_idx)
                 pitches = chord_pitches(

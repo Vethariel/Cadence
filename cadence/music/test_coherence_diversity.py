@@ -1,13 +1,15 @@
 """
 Tests de coherencia intra-request y heterogeneidad inter-request.
 
-- Coherencia: section IDs alineados en todo el pipeline; narrativa y validator
-  usan el mismo contrato.
-- Heterogeneidad: mismo prompt + seeds distintas → timbres/patrones distintos;
-  invariantes narrativas estables.
+Marcados como integration: validan invariantes amplios, no el contrato mínimo del pipeline.
+Ejecutar: pytest -m integration cadence/music/test_coherence_diversity.py
 """
 
 from __future__ import annotations
+
+import pytest
+
+pytestmark = pytest.mark.integration
 
 from cadence.agent.nodes.arrangement import arrangement_planner_node
 from cadence.agent.nodes.development import development_planner_node

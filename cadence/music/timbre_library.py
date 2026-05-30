@@ -289,6 +289,7 @@ EXTENDED_TIMBRES: dict[str, list[tuple[int, str, str]]] = {
         (24, "Nylon Guitar", "folk,game,cutscene"),
         (25, "Steel Guitar", "folk,country,cinematic"),
         (26, "Jazz Guitar", "jazz,cinematic"),
+        (31, "Guitar Harmonics", "ambient,cinematic,game"),
     ],
     "guitar_electric": [
         (27, "Clean Electric Guitar", "rock,pop,game"),

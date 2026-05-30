@@ -1,19 +1,22 @@
 from typing import Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from langgraph.graph import MessagesState
+
+from cadence.music.scale_theory import ScaleMode, normalize_mode
+from cadence.music.meter_theory import normalize_time_signature
 
 
 # ── Submodelos ────────────────────────────────────────────────
 
 class UserIntent(BaseModel):
-    """Resultado del nodo intent/router: qué quiere el usuario y qué sabe de música."""
+    """Intención resuelta en prepare (determinista) a partir del prompt y el brief."""
     raw_prompt: str
     knowledge_level: Literal["technical", "non_technical"]
     use_case: Literal["game", "animation", "loop", "cutscene"] = "game"
     mood: str = ""
     style_tags: list[str] = Field(
         default_factory=list,
-        description="Pistas iniciales del router; el perfil enriquecido manda en timbres.",
+        description="Pistas de estilo del catálogo y del brief creativo.",
     )
 
 
@@ -48,29 +51,166 @@ class MusicalStyleProfile(BaseModel):
     )
 
 
-class TimbreFix(BaseModel):
-    """Corrección de timbre sugerida por el verificador de coherencia."""
-    instrument_id: str
-    gm_program: int = Field(ge=0, le=127)
-    reason: str = ""
+class CreativeBrief(BaseModel):
+    """
+    Brief dramático ampliado — salida del prompt_enhancer.
+    El technical_spec lo convierte en parámetros musicales concretos.
+    """
+    logline: str = Field(
+        description="Una frase: qué historia cuenta la música.",
+    )
+    dramatic_objective: str = Field(
+        description="Qué debe lograr la pieza en el juego/animación (función dramática).",
+    )
+    emotional_arc: str = Field(
+        description="Cómo evoluciona la emoción de inicio a fin (ej. dread → defiance → triumph).",
+    )
+    scene_and_context: str = Field(
+        description="Escena, personaje o situación narrativa que inspira la música.",
+    )
+    listener_journey: str = Field(
+        description="Qué debe sentir el jugador/espectador momento a momento.",
+    )
+    mood_keywords: list[str] = Field(
+        default_factory=list,
+        description="3–6 palabras de mood en inglés (dark, urgent, triumphant…).",
+    )
+    use_case: Literal["game", "animation", "loop", "cutscene"] = Field(
+        default="game",
+        description="Contexto de uso inferido del brief.",
+    )
+    style_hints: list[str] = Field(
+        default_factory=list,
+        description="Pistas de estilo en lenguaje natural (no sustituyen genre_tags del catálogo).",
+    )
+    enriched_prompt: str = Field(
+        description=(
+            "Párrafo(s) que integran objetivo, arco, escena y emoción — "
+            "entrada principal para el nodo técnico."
+        ),
+    )
+    reasoning: str = Field(
+        default="",
+        description="Por qué elegiste este enfoque dramático respecto al prompt original.",
+    )
 
 
-class StyleCoherenceVerdict(BaseModel):
-    """Resultado del nodo de verificación timbral."""
-    passed: bool = True
-    issues: list[str] = Field(default_factory=list)
-    timbre_fixes: list[TimbreFix] = Field(default_factory=list)
+InstrumentRole = Literal["lead", "bass", "rhythm", "pad", "fx"]
+
+
+class ProposalInstrument(BaseModel):
+    """Capa + timbre GM elegidos por technical_spec (antes de validación de orquestación)."""
+    instrument_id: str = Field(
+        description="Id del registro (drums, bass, melody, pad, arp_synth, …).",
+    )
+    role: InstrumentRole = Field(
+        description="Función musical de la capa: lead | bass | rhythm | pad | fx.",
+    )
+    gm_program: int = Field(
+        ge=0, le=127,
+        description="Programa GM del catálogo para este instrument_id.",
+    )
+    active: bool = Field(
+        default=True,
+        description="False para desactivar una capa opcional explícitamente.",
+    )
+
 
 class TechnicalProposal(BaseModel):
-    """Propuesta técnica generada cuando el usuario NO es técnico."""
+    """Propuesta técnica: parámetros concretos derivados del brief creativo."""
     bpm: int
-    time_signature: list[int] = Field(default=[4, 4])
+    time_signature: list[int] = Field(
+        default=[4, 4],
+        description="Compás [numerador, denominador]: 4/4, 3/4, 6/8, 5/4…",
+    )
     key: str
-    mode: Literal["major", "minor"] = "minor"
+    mode: ScaleMode = Field(
+        default="minor",
+        description="Modo de escala: major | minor | dorian | phrygian.",
+    )
     genre_tags: list[str] = Field(default_factory=list)
     energy_level: int = Field(ge=1, le=5, default=3)
-    structure: list[str] = Field(default=["intro", "verse", "chorus", "outro"])
+    structure_form: str = Field(
+        default="",
+        description="Id de forma en structure_catalog (ej. boss_edm, loop_ambient). Vacío = derivar.",
+    )
+    structure: list[str] = Field(
+        default_factory=list,
+        description="Section ids; vacío si solo structure_form. Prioridad si el usuario listó secciones.",
+    )
+    bars_per_section: dict[str, int] = Field(
+        default_factory=dict,
+        description="Compases opcionales por section_id (validados en prepare/structure_det).",
+    )
+    target_total_bars: int | None = Field(
+        default=None,
+        description="Meta de compases totales; escala proporcional si se define.",
+    )
+    target_duration_sec: int | None = Field(
+        default=None,
+        description="Duración objetivo en segundos (orientación; no obligatoria).",
+    )
+    ensemble_concept: str = Field(
+        default="",
+        description="Concepto del ensemble en 1–2 frases (variación timbral creativa).",
+    )
+    instruments: list[ProposalInstrument] = Field(
+        default_factory=list,
+        description=(
+            "Capas activas con gm_program del catálogo TIMBRES_BY_INSTRUMENT. "
+            "Vacío = el sistema elige por seed. Si se rellena, define la variación principal."
+        ),
+    )
+    melody_texture: Literal["sparse", "balanced", "dense", "percussive"] | None = Field(
+        default=None,
+        description="Densidad melódica; vacío = derivar del arquetipo.",
+    )
+    drum_pattern: str = Field(
+        default="",
+        description="Patrón de batería (catálogo strategy_pools). Vacío = derivar por seed.",
+    )
+    bass_pattern: str = Field(
+        default="",
+        description="Patrón de bajo (catálogo strategy_pools). Vacío = derivar por seed.",
+    )
+    harmony_pool: str = Field(
+        default="",
+        description="Pool armónico: classic, modal, game, dark, cinematic, dance, aggressive.",
+    )
+    arp_pattern: str = Field(default="", description="Si arp_synth activo.")
+    stab_pattern: str = Field(default="", description="Si chord_stab activo.")
+    perc_pattern: str = Field(default="", description="Si perc_aux activo.")
+    pluck_pattern: str = Field(default="", description="Si synth_pluck activo.")
+    counter_pattern: str = Field(default="", description="Si countermelody activo.")
+    echo_source: str = Field(
+        default="",
+        description="auto | melody | arp_synth | chord_stab | echo_synth.",
+    )
+    texture_mode: Literal["bedded", "staggered", "simultaneous", "compact"] | None = Field(
+        default=None,
+        description="Entrada de capas en el tiempo; vacío = derivar.",
+    )
+    composition_archetype: str = Field(
+        default="",
+        description="Arquetipo compositivo; vacío = inferir en strategy_planner.",
+    )
+    global_motif: list[int] = Field(
+        default_factory=list,
+        description="3–5 grados 0–6 del motivo principal; vacío = derivar.",
+    )
     reasoning: str = ""
+
+    @field_validator("time_signature", mode="before")
+    @classmethod
+    def _validate_time_signature(cls, v: object) -> list[int]:
+        if isinstance(v, list):
+            return normalize_time_signature(v)
+        return normalize_time_signature(None)
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def _validate_mode(cls, v: object) -> str:
+        return normalize_mode(str(v) if v is not None else None)
 
 class SongStructure(BaseModel):
     """Macro-forma de la canción: secciones y duración estimada."""
@@ -207,17 +347,15 @@ class CreativeVariationBounds(BaseModel):
 class NodeSeeds(BaseModel):
     """Subsemillas derivadas de generation_seed por nodo del grafo."""
     generation_seed: int = 0
-    seed_router: int = 0
-    seed_tag_enricher: int = 0
-    seed_technical_proposal: int = 0
-    seed_technical_parser: int = 0
+    seed_prompt_enhancer: int = 0
+    seed_technical_spec: int = 0
+    seed_prepare: int = 0
     seed_narrative_planner: int = 0
     seed_structure_planner: int = 0
     seed_strategy_planner: int = 0
     seed_harmony_planner: int = 0
     seed_development_planner: int = 0
     seed_instrument_planner: int = 0
-    seed_style_coherence: int = 0
     seed_arrangement_planner: int = 0
     seed_melody: int = 0
     seed_melody_repair: int = 0
@@ -239,6 +377,10 @@ class SectionHarmony(BaseModel):
 class InstrumentAssignment(BaseModel):
     """Instrumento elegido por el agente con timbre GM y nivel de mezcla."""
     instrument_id: str
+    role: InstrumentRole = Field(
+        default="lead",
+        description="Rol musical; usado en composición, validación y humanize.",
+    )
     gm_program: int = Field(
         ge=0, le=127,
         description="gm_program elegido de TIMBRES_BY_INSTRUMENT[instrument_id].",
@@ -294,12 +436,16 @@ class OrchestrationPlan(BaseModel):
 class LayerSpec(BaseModel):
     """Capa instrumental en el arreglo — qué suena y cuándo."""
     instrument_id: str
+    role: InstrumentRole = Field(
+        default="lead",
+        description="Rol desde technical_spec / orchestration_plan.",
+    )
     active_sections: list[str] = Field(
         default_factory=lambda: ["*"],
         description="Secciones activas, o ['*'] para todas.",
     )
     pattern_strategy: Literal[
-        "loop_1bar", "phrase_4bar", "one_shot", "generative_llm", "chord_sustain",
+        "loop_1bar", "phrase_4bar", "one_shot", "chord_sustain",
     ] = "loop_1bar"
     mix_level: float = Field(default=-10.0, description="Nivel de mezcla en dB.")
     min_density: float = Field(
@@ -328,8 +474,8 @@ class ArrangementPlan(BaseModel):
     layers: list[LayerSpec]
     layer_schedule: LayerSchedule | None = None
     required_layers: list[str] = Field(
-        default_factory=lambda: ["drums", "bass", "melody"],
-        description="Capas obligatorias para pasar validación.",
+        default_factory=list,
+        description="Capas que deben existir en tracks; derivadas del plan de orquestación.",
     )
 
 class DevelopmentSegment(BaseModel):
@@ -429,7 +575,7 @@ class PatternSelectionAudit(BaseModel):
 class HarmonyPlan(BaseModel):
     """Plan armónico compartido por bajo, melodía y pad."""
     key: str
-    mode: Literal["major", "minor"]
+    mode: ScaleMode
     sections: list[SectionHarmony]
     bars_per_chord_default: int = 4
 
@@ -466,11 +612,14 @@ class ValidationResult(BaseModel):
 # ── Estado principal del grafo ────────────────────────────────
 
 class SongState(MessagesState):
-    # — Router
+    # — Entrada creativa (LLM inicial)
+    creative_brief: Optional[CreativeBrief] = None
+
+    # — Intención y estilo (prepare, determinista)
     intent: Optional[UserIntent] = None
     style_profile: Optional[MusicalStyleProfile] = None
 
-    # — Propuesta técnica (solo ruta non_technical)
+    # — Propuesta técnica (LLM technical_spec + normalización en prepare)
     technical_proposal: Optional[TechnicalProposal] = None
 
     # — Planificación
@@ -490,8 +639,6 @@ class SongState(MessagesState):
     pattern_intent: Optional[PatternIntent] = None
     pattern_selection_audit: Optional[PatternSelectionAudit] = None
     orchestration_plan: Optional[OrchestrationPlan] = None
-    style_coherence: Optional[StyleCoherenceVerdict] = None
-    style_coherence_retries: int = 0
     arrangement: Optional[ArrangementPlan] = None
     generation_seed: int = 0
 

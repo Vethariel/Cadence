@@ -13,10 +13,13 @@ from cadence.music.tonal_batch_context import (
     tonal_signature,
 )
 
-Mode = Literal["major", "minor"]
+from cadence.music.scale_theory import ScaleMode, normalize_mode
+
+Mode = ScaleMode
 
 _KEY_RE = re.compile(
-    r"\b(?:en\s+)?([A-G](?:#|b|♯|♭)?)\s*(major|minor|maj|min|m)\b",
+    r"\b(?:en\s+)?([A-G](?:#|b|♯|♭)?)\s*"
+    r"(major|minor|maj|min|m|dorian|dorico|phrygian|frigio|frigian)\b",
     re.IGNORECASE,
 )
 _KEY_ONLY_RE = re.compile(
@@ -67,7 +70,14 @@ def parse_explicit_key_mode(raw_prompt: str) -> tuple[str, Mode] | None:
     if m:
         key = _normalize_key(m.group(1))
         mode_raw = m.group(2).lower()
-        mode: Mode = "minor" if mode_raw in ("minor", "min", "m") else "major"
+        if mode_raw in ("minor", "min", "m"):
+            mode: Mode = "minor"
+        elif mode_raw in ("dorian", "dorico"):
+            mode = "dorian"
+        elif mode_raw in ("phrygian", "frigio", "frigian"):
+            mode = "phrygian"
+        else:
+            mode = "major"
         return key, mode
     return None
 

@@ -1,5 +1,6 @@
 """Arpeggio determinista sobre acordes — capa Spider Dance / Bad Apple."""
 
+from cadence.music.meter_theory import ms_per_step, steps_per_bar as meter_steps_per_bar
 from cadence.instruments.context import ComposeContext
 from cadence.music.narrative_contract import section_intent_map_from_state
 from cadence.music.seed_policy import seed_for_state
@@ -8,9 +9,6 @@ from cadence.music.arp_patterns import generate_bar_arp, resolve_arp_pattern, st
 from cadence.music.harmony_theory import chord_at_bar, chord_pitches, section_harmony_map
 from cadence.schemas.song_state import Track
 
-
-def _ms_per_step(bpm: int) -> float:
-    return (60000 / bpm) / 4
 
 
 def _compose_arp_synth(ctx: ComposeContext) -> Track | None:
@@ -28,8 +26,19 @@ def _compose_arp_synth(ctx: ComposeContext) -> Track | None:
     raw_pattern = strategies.arp_pattern if strategies else None
     pattern = resolve_arp_pattern(raw_pattern, seed)
 
-    step_ms = _ms_per_step(ctx.bpm)
-    steps_per_bar = 16
+    from cadence.music.orchestral_stack_policy import (
+        arp_min_density_orchestral,
+        arp_stride_bonus_orchestral,
+        orchestral_stack_active,
+    )
+    from cadence.music.style_archetype import get_composition_archetype
+
+    arch = get_composition_archetype(ctx.state)
+    orch = orchestral_stack_active(arch)
+    min_density = arp_min_density_orchestral() if orch else 0.60
+
+    step_ms = ms_per_step(ctx.bpm, ctx.time_signature)
+    steps_per_bar = meter_steps_per_bar(ctx.time_signature)
     events = []
     current_t = 0.0
     beat_index = 0
@@ -40,7 +49,7 @@ def _compose_arp_synth(ctx: ComposeContext) -> Track | None:
         density = intent.density if intent else 0.5
         rhythmic = intent.rhythmic_complexity if intent else 0.5
 
-        if section not in active or density < 0.60:
+        if section not in active or density < min_density:
             current_t += bars * steps_per_bar * step_ms
             beat_index += bars * steps_per_bar
             continue
@@ -52,6 +61,8 @@ def _compose_arp_synth(ctx: ComposeContext) -> Track | None:
             continue
 
         note_stride = steps_per_note(density, rhythmic, pattern)
+        if orch:
+            note_stride += arp_stride_bonus_orchestral()
         base_vel = int(38 + density * 28)
 
         for bar_idx in range(bars):

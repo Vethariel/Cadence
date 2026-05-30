@@ -5,6 +5,7 @@ from __future__ import annotations
 import statistics
 from collections import defaultdict
 
+from cadence.music.meter_theory import ms_per_bar as meter_ms_per_bar
 from cadence.schemas.song_state import Track
 
 LEAD_IDS = frozenset({
@@ -12,13 +13,17 @@ LEAD_IDS = frozenset({
 })
 
 
-def ms_per_bar(bpm: int) -> float:
-    return (60000 / max(bpm, 1)) * 4
+def ms_per_bar(bpm: int, time_signature: list[int] | None = None) -> float:
+    return meter_ms_per_bar(bpm, time_signature)
 
 
-def layers_active_stats(tracks: list[Track], bpm: int) -> tuple[float, int]:
+def layers_active_stats(
+    tracks: list[Track],
+    bpm: int,
+    time_signature: list[int] | None = None,
+) -> tuple[float, int]:
     """Media y máximo de pistas con notas por compás global."""
-    bar_ms = ms_per_bar(bpm)
+    bar_ms = ms_per_bar(bpm, time_signature)
     bar_active: dict[int, int] = defaultdict(int)
 
     for track in tracks:
@@ -38,9 +43,13 @@ def layers_active_stats(tracks: list[Track], bpm: int) -> tuple[float, int]:
     return statistics.mean(vals), max(vals)
 
 
-def notes_per_bar_stdev(tracks: list[Track], bpm: int) -> float:
+def notes_per_bar_stdev(
+    tracks: list[Track],
+    bpm: int,
+    time_signature: list[int] | None = None,
+) -> float:
     """Desviación estándar de la densidad total de notas por compás."""
-    bar_ms = ms_per_bar(bpm)
+    bar_ms = ms_per_bar(bpm, time_signature)
     bar_notes: dict[int, int] = defaultdict(int)
 
     for track in tracks:
@@ -53,12 +62,16 @@ def notes_per_bar_stdev(tracks: list[Track], bpm: int) -> float:
     return statistics.stdev(bar_notes.values())
 
 
-def melody_notes_per_bar_mean(tracks: list[Track], bpm: int) -> float:
+def melody_notes_per_bar_mean(
+    tracks: list[Track],
+    bpm: int,
+    time_signature: list[int] | None = None,
+) -> float:
     """Media de notas melódicas por compás con eventos."""
     melody = next((t for t in tracks if t.id == "melody"), None)
     if not melody or not melody.events:
         return 0.0
-    bar_ms = ms_per_bar(bpm)
+    bar_ms = ms_per_bar(bpm, time_signature)
     bar_notes: dict[int, int] = defaultdict(int)
     for e in melody.events:
         if e.type == "note":
