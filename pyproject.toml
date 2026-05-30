@@ -23,5 +23,12 @@ dev = [
     "ruff>=0.15.15",
 ]
 
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["cadence*"]
+
 [tool.uv]
 package = true

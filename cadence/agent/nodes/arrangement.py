@@ -564,4 +564,11 @@ def arrangement_planner_node(state: SongState) -> dict:
         required_layers=arrangement_required_layers(use_case, suppress_drums),
     )
 
-    return {"arrangement": arrangement}
+    from cadence.music.voice_register_profile import profile_from_state
+
+    return {
+        "arrangement": arrangement,
+        "voice_register_profile": profile_from_state(
+            {**state, "arrangement": arrangement},
+        ).to_dict(),
+    }

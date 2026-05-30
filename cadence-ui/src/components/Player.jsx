@@ -1,11 +1,13 @@
 import { useCadenceStore } from '../store'
 import { startPlayback, startMidiPlayback, stopPlayback } from '../audio/player'
 import { productionMidiUrl } from '../api'
+import { trackKey, trackShortLabel } from '../audio/track-labels'
 
 export default function Player() {
   const {
     rsong, isPlaying, isAudioLoading, currentTimeMs, activeSection, meta,
     playbackSource, setPlaybackSource, currentProductionId,
+    trackMutes, toggleTrackMute, setAllTrackMutes,
   } = useCadenceStore()
 
   if (!rsong) return null
@@ -32,6 +34,30 @@ export default function Player() {
     } else {
       await startPlayback(rsong)
     }
+  }
+
+  async function restartIfPlaying() {
+    const playing = useCadenceStore.getState().isPlaying
+    if (!playing || !rsong) return
+    await stopPlayback()
+    if (playbackSource === 'midi' && currentProductionId) {
+      await startMidiPlayback(productionMidiUrl(currentProductionId), {
+        durationMs: duration,
+        rsong,
+      })
+    } else {
+      await startPlayback(rsong)
+    }
+  }
+
+  async function handleTrackToggle(trackId) {
+    toggleTrackMute(trackId)
+    await restartIfPlaying()
+  }
+
+  async function handleMuteAll(muted) {
+    setAllTrackMutes(muted)
+    await restartIfPlaying()
   }
 
   async function handleSourceChange(source) {
@@ -95,6 +121,77 @@ export default function Player() {
           )}
           {formatTime(currentTimeMs)} / {formatTime(duration)}
         </div>
+      </div>
+
+      {/* Mixer — silenciar pistas */}
+      <div style={{ marginBottom: '12px' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginBottom: '8px',
+        }}>
+          <span style={{
+            fontFamily: 'Space Mono, monospace',
+            fontSize: '10px', color: 'var(--muted)', letterSpacing: '0.08em',
+          }}>
+            PISTAS
+          </span>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              type="button"
+              onClick={() => handleMuteAll(false)}
+              disabled={isAudioLoading}
+              style={mixerActionStyle()}
+            >
+              todas
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMuteAll(true)}
+              disabled={isAudioLoading}
+              style={mixerActionStyle()}
+            >
+              ninguna
+            </button>
+          </div>
+        </div>
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: '6px',
+          maxHeight: '120px', overflowY: 'auto',
+        }}>
+          {[...(rsong.tracks || [])]
+            .sort((a, b) => (b.event_count ?? b.events?.length ?? 0)
+              - (a.event_count ?? a.events?.length ?? 0))
+            .map((track) => {
+              const id = trackKey(track)
+              const muted = !!trackMutes[id]
+              const count = track.event_count ?? track.events?.length ?? 0
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  title={muted ? 'Silenciada — clic para activar' : 'Activa — clic para silenciar'}
+                  onClick={() => handleTrackToggle(id)}
+                  disabled={isAudioLoading}
+                  style={trackToggleStyle(muted)}
+                >
+                  <span style={{
+                    display: 'inline-block', width: '6px', height: '6px',
+                    borderRadius: '50%', marginRight: '6px',
+                    background: muted ? 'var(--muted)' : 'var(--accent3)',
+                    opacity: muted ? 0.4 : 1,
+                  }} />
+                  {trackShortLabel(track)}
+                  <span style={{ opacity: 0.55, marginLeft: '5px' }}>{count}</span>
+                </button>
+              )
+            })}
+        </div>
+        <p style={{
+          margin: '8px 0 0', fontSize: '9px', color: 'var(--muted)',
+          fontFamily: 'Space Mono, monospace',
+        }}>
+          Si está sonando, al cambiar una pista se reinicia la reproducción con la nueva mezcla.
+        </p>
       </div>
 
       {/* Comparativa A/B */}
@@ -188,4 +285,34 @@ export default function Player() {
       </div>
     </div>
   )
+}
+
+function mixerActionStyle() {
+  return {
+    fontFamily: 'Space Mono, monospace',
+    fontSize: '9px',
+    padding: '3px 8px',
+    borderRadius: '3px',
+    cursor: 'pointer',
+    background: 'var(--surface2)',
+    border: '1px solid var(--border)',
+    color: 'var(--muted)',
+  }
+}
+
+function trackToggleStyle(muted) {
+  return {
+    fontFamily: 'Space Mono, monospace',
+    fontSize: '10px',
+    padding: '5px 10px',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    background: muted ? 'rgba(255,255,255,0.04)' : 'rgba(6,214,160,0.12)',
+    border: `1px solid ${muted ? 'var(--border)' : 'rgba(6,214,160,0.45)'}`,
+    color: muted ? 'var(--muted)' : 'var(--text)',
+    textDecoration: muted ? 'line-through' : 'none',
+    opacity: muted ? 0.55 : 1,
+  }
 }

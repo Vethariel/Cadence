@@ -128,23 +128,25 @@ def bass_pool_priority(
     use_case: str,
     *,
     composition_archetype: str | None = None,
+    melody_texture: str = "balanced",
 ) -> list[str]:
     from cadence.music.strategy_pools import BASS_POOL
+    from cadence.music.voice_register_profile import resolve_voice_register_profile
 
     arch = composition_archetype or ""
-    if arch == "chiptune_dance":
-        return ["octave_pulse", "driving", "syncopated", "half_time", "walk"] + [
-            p for p in BASS_POOL
-            if p not in ("octave_pulse", "driving", "syncopated", "half_time", "walk", "root_fifth")
-        ]
-    if arch == "compact_action":
-        return ["driving", "syncopated", "octave_pulse", "half_time", "pulse"] + [
-            p for p in BASS_POOL if p not in ("driving", "syncopated", "octave_pulse", "half_time", "pulse")
-        ]
-    if arch == "orchestral_boss":
-        return ["driving", "octave_pulse", "half_time", "syncopated", "walk"] + [
-            p for p in BASS_POOL if p not in ("driving", "octave_pulse", "half_time", "syncopated", "walk")
-        ]
+    if arch in (
+        "chiptune_dance",
+        "compact_action",
+        "orchestral_boss",
+        "cinematic_cutscene",
+        "ambient_loop",
+    ) or melody_texture in ("sparse", "balanced", "dense", "percussive"):
+        return resolve_voice_register_profile(
+            composition_archetype=arch or "default_game",
+            energy_level=energy_level,
+            use_case=use_case,
+            melody_texture=melody_texture,
+        ).bass_pool_priority()
 
     uc = (use_case or "game").lower()
     if uc in ("loop", "cutscene") or energy_level <= 2:
@@ -211,12 +213,18 @@ def layer_pattern_bias(
         return bias
 
     if arch == "orchestral_boss":
+        from cadence.music.voice_register_profile import resolve_voice_register_profile
+
         bias["arp_candidates"] = ["broken", "up", "pingpong", "syncopated"] + list(ARP_PATTERNS)
         bias["stab_candidates"] = ["orchestral_sync", "half_bar", "offbeat"] + list(STAB_PATTERN_POOL)
         bias["counter_candidates"] = ["orchestral_sync", "offbeat_sync", "sparse"] + list(COUNTER_PATTERN_POOL)
         bias["pluck_candidates"] = ["sparse", "eighth"] + list(PLUCK_PATTERN_POOL)
         bias["perc_candidates"] = ["syncopated", "four_clap", "backbeat"] + list(PERC_PATTERN_POOL)
-        bias["bass_candidates"] = ["driving", "octave_pulse", "half_time"]
+        bias["bass_candidates"] = resolve_voice_register_profile(
+            composition_archetype="orchestral_boss",
+            energy_level=energy_level,
+            use_case=uc,
+        ).bass_pool_priority()[:6]
         bias["echo_source"] = "chord_stab"
         return bias
 

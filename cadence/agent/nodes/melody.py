@@ -164,18 +164,21 @@ def compose_melody_track(state: SongState) -> Track:
 
     archetype = get_composition_archetype(state)
     plan = state.get("orchestration_plan")
-    melody_texture = (
+    from cadence.music.style_archetype import melody_texture_for_archetype
+    from cadence.music.voice_register_profile import profile_from_state
+
+    requested_tex = (
         getattr(plan, "melody_texture", "balanced") if plan is not None else "balanced"
     ) or "balanced"
-    dense_target = is_dense_melody_target(
-        archetype,
-        energy_level=energy_level,
-        melody_texture=melody_texture,
-        use_case=intent.use_case,
+    melody_texture = melody_texture_for_archetype(
+        archetype, energy_level, intent.use_case, requested_tex,
     )
-    notes_target = melody_notes_per_bar_target(
-        archetype, energy_level, melody_texture=melody_texture, use_case=intent.use_case,
+    voice_register = profile_from_state(state)
+    dense_target = voice_register.is_dense_melody_target(energy_level, intent.use_case)
+    notes_target = voice_register.notes_per_bar_target(
+        energy_level, narrative_role="climax",
     )
+    min_steps = voice_register.min_melody_duration_steps
 
     repair_context = ""
     retry_n = state.get("retry_count", 0)
@@ -186,9 +189,13 @@ def compose_melody_track(state: SongState) -> Track:
         "al menos 3 notas o contorno inverso.\n"
         "- Prefiere movimiento conjunto (±1 grado); saltos máx 2 grados "
         "(≤4 semitonos) salvo en climax.\n"
-        f"- En drop/climax/build-up: máximo {int((0.05 if dense_target else 0.10) * 100)}% silencios (is_rest).\n"
-        f"- Objetivo global: ≥{notes_target} notas por compás en secciones activas densas.\n"
-        "- En secciones density>=0.7: frases de 2 compases, notas de 1-2 steps.\n"
+        f"- En drop/climax/build-up: máximo "
+        f"{int(voice_register.melody_rest_ratio_for_intent(None, use_case=intent.use_case, energy_level=energy_level) * 100)}% "
+        "silencios (is_rest).\n"
+        f"- Objetivo global: ~{notes_target} notas por compás en secciones activas (no exceder).\n"
+        f"- En secciones density>=0.7: frases de 2 compases, notas de "
+        f"{min_steps if voice_register.lead_articulation != 'staccato' else 1}-"
+        f"{2 if voice_register.lead_articulation == 'staccato' else 8} steps.\n"
         "- Registro objetivo C4–C6 (octave_offset 0 o +1 en climax)."
         f"\n- Variante melódica (subsemilla {phrase_variant}): "
         f"contorno {'ascendente' if phrase_variant % 2 else 'ondulante'} en frases de respuesta."
@@ -247,22 +254,16 @@ def compose_melody_track(state: SongState) -> Track:
 
     dev_block = _development_hint(state)
 
-    archetype_hint = ""
-    if archetype == "chiptune_dance" or dense_target:
-        label = "CHIPTUNE/DANCE" if archetype == "chiptune_dance" else "DENSE DANCE"
-        archetype_hint = (
-            f"\nArquetipo {label}: melodía muy densa (≥{notes_target} notas/compás en climax), "
-            "notas cortas (1-2 steps), saltos de hasta 7 semitonos, silencios ≤5%.\n"
+    archetype_hint = voice_register.llm_archetype_hint(notes_target)
+    if archetype == "compact_action":
+        archetype_hint += (
+            "\nArquetipo COMPACTO: melodía directa y urgente; "
+            "no rellenes con arpegios orquestales.\n"
         )
-    elif archetype == "compact_action":
-        archetype_hint = (
-            "\nArquetipo COMPACTO: melodía directa y urgente, pocos silencios (≤10%), "
-            "frases cortas; no rellenes con arpegios orquestales.\n"
-        )
-    elif archetype == "orchestral_boss":
-        archetype_hint = (
-            "\nArquetipo ORQUESTAL: melodía protagonista con densidad moderada, "
-            "frases expresivas; silencios ≤15% en climax.\n"
+    if voice_register.stack_pressure:
+        archetype_hint += (
+            "\nStack denso (arp/contramelodía/pad): melodía protagonista pero ESPACIADA; "
+            "deja huecos — la armonía la llevan las capas de soporte.\n"
         )
 
     harmonic_stack_hint = ""
@@ -277,6 +278,7 @@ def compose_melody_track(state: SongState) -> Track:
             count_harmonic_support_layers(active),
             proposal.energy_level,
             intent.use_case,
+            voice_register=voice_register,
         ):
             harmonic_stack_hint = (
                 "\nStack armónico denso (arp/contramelodía/pluck): "
@@ -324,8 +326,8 @@ def compose_melody_track(state: SongState) -> Track:
         "Estilo de fraseo:\n"
         "- Pregunta: ascendente o arco, termina en silencio o nota tensa\n"
         "- Respuesta: desciende o resuelve a tónica/grado 0\n"
-        "- Drop/climax: notas cortas (1-2 steps), denso, pocos silencios\n"
-        "- Breakdown: silencios permitidos pero no más del 30%\n"
+        "- Drop/climax: respeta el perfil de registro (duración y densidad indicados arriba)\n"
+        "- Breakdown: silencios permitidos según rests por sección\n"
         f"{harmony_block}{dev_block}{narrative_block}{archetype_hint}\n"
         f"{format_section_ids_for_llm(state)}\n"
         f"{format_anchors_for_llm(state.get('narrative_anchors'))}\n"

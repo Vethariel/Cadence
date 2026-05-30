@@ -392,6 +392,50 @@ def _check_melody_notes_per_bar(
     return True, ""
 
 
+def _check_melody_register_ceiling(
+    tracks: list[Track],
+    bpm: int,
+    state: SongState,
+) -> tuple[bool, str]:
+    """Techo de densidad/staccato según VoiceRegisterProfile."""
+    from cadence.music.voice_register_profile import profile_from_state
+
+    profile = profile_from_state(state)
+    if profile.max_melody_notes_per_bar is None and profile.max_staccato_ratio is None:
+        return True, ""
+
+    melody = next((t for t in tracks if t.id == "melody"), None)
+    if not melody or not melody.events:
+        return True, ""
+
+    issues = []
+    mean_notes = melody_notes_per_bar_mean(tracks, bpm)
+    if (
+        profile.max_melody_notes_per_bar is not None
+        and mean_notes > profile.max_melody_notes_per_bar
+    ):
+        issues.append(
+            f"{mean_notes:.1f} notas/compás (máx {profile.max_melody_notes_per_bar:.1f} "
+            f"para registro {profile.lead_articulation})"
+        )
+
+    if profile.max_staccato_ratio is not None:
+        bar_ms = (60000 / max(bpm, 1)) * 4
+        threshold = bar_ms / 8
+        notes = [e for e in melody.events if e.type == "note"]
+        if notes:
+            short = sum(1 for e in notes if e.duration_ms < threshold)
+            ratio = short / len(notes)
+            if ratio > profile.max_staccato_ratio:
+                issues.append(
+                    f"{ratio:.0%} notas muy cortas (máx {profile.max_staccato_ratio:.0%})"
+                )
+
+    if issues:
+        return False, "Melodía demasiado densa para el perfil de registro: " + "; ".join(issues)
+    return True, ""
+
+
 def _check_orchestral_simultaneity(
     tracks: list[Track],
     bpm: int,
@@ -538,6 +582,7 @@ CHECKS = [
     (_check_planned_optional_layers, 0.03, "planned_layers"),
     (_check_melody_rest_density, 0.03, "melody_rest_density"),
     (_check_melody_notes_per_bar, 0.03, "melody_notes_per_bar"),
+    (_check_melody_register_ceiling, 0.03, "melody_register_ceiling"),
     (_check_orchestral_simultaneity, 0.03, "orchestral_layers"),
     (_check_narrative_key_coverage, 0.03, "narrative_key_coverage"),
     (_check_narrative_intensity_direction, 0.03, "narrative_intensity"),
@@ -614,6 +659,8 @@ def validator_node(state: SongState) -> dict:
             passed, msg = check_fn(
                 tracks, bpm, archetype, energy, melody_texture, use_case,
             )
+        elif check_fn == _check_melody_register_ceiling:
+            passed, msg = check_fn(tracks, bpm, state)
         elif check_fn == _check_orchestral_simultaneity:
             passed, msg = check_fn(
                 tracks,

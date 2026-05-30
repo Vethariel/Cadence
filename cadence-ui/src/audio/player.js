@@ -62,6 +62,15 @@ function findRsongTrack(rsong, instrumentId) {
   return rsong?.tracks?.find(t => (t.instrument_id || t.id) === instrumentId)
 }
 
+function isTrackMutedById(instrumentId) {
+  return !!useCadenceStore.getState().trackMutes[instrumentId]
+}
+
+function shouldScheduleTrack(track) {
+  const id = track.instrument_id || track.id
+  return !isTrackMutedById(id)
+}
+
 function scheduleRsongTrack(synthInstance, track, rsong, startTime) {
   const channel = resolveChannel(track)
   const instrumentId = track.instrument_id || track.id
@@ -96,6 +105,7 @@ function scheduleMidiTrack(synthInstance, track, rsong, startTime) {
   if (!track.notes.length) return
 
   const instrumentId = resolveInstrumentId(track.name)
+  if (isTrackMutedById(instrumentId)) return
   const isDrum = track.channel === 9
     || instrumentId === 'drums'
     || instrumentId === 'perc_aux'
@@ -206,6 +216,12 @@ async function _startMidi(midiUrl, { durationMs, rsong }) {
     durationMs,
     schedule: (synthInstance, startTime) => {
       for (const track of midi.tracks) {
+        if (!shouldScheduleTrack({
+          instrument_id: resolveInstrumentId(track.name),
+          id: resolveInstrumentId(track.name),
+        })) {
+          continue
+        }
         scheduleMidiTrack(synthInstance, track, rsong, startTime)
       }
     },
@@ -213,10 +229,12 @@ async function _startMidi(midiUrl, { durationMs, rsong }) {
 }
 
 async function _startRsong(rsong) {
-  const sorted = [...rsong.tracks].sort((a, b) => {
-    const ord = { rhythm: 0, bass: 1, pad: 2, lead: 3, fx: 4 }
-    return (ord[a.role] ?? 2) - (ord[b.role] ?? 2)
-  })
+  const sorted = [...rsong.tracks]
+    .filter(shouldScheduleTrack)
+    .sort((a, b) => {
+      const ord = { rhythm: 0, bass: 1, pad: 2, lead: 3, fx: 4 }
+      return (ord[a.role] ?? 2) - (ord[b.role] ?? 2)
+    })
 
   await _startSession({
     durationMs: rsong.header.duration_ms,

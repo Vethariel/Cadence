@@ -24,6 +24,8 @@ export const useCadenceStore = create((set, get) => ({
   playbackSource: 'rsong', // 'rsong' | 'midi'
   currentTimeMs: 0,
   activeSection: null,
+  /** instrument_id → true si la pista está silenciada */
+  trackMutes: {},
 
   addMessage: (role, content) =>
     set((s) => ({
@@ -34,12 +36,20 @@ export const useCadenceStore = create((set, get) => ({
 
   setView: (view) => set({ view }),
 
-  setResult: (rsong, meta, productionId = null) => set({
-    rsong,
-    meta,
-    currentProductionId: productionId,
-    playbackSource: 'rsong',
-  }),
+  setResult: (rsong, meta, productionId = null) => {
+    const trackMutes = {}
+    for (const t of rsong?.tracks || []) {
+      const id = t.instrument_id || t.id
+      trackMutes[id] = false
+    }
+    return set({
+      rsong,
+      meta,
+      currentProductionId: productionId,
+      playbackSource: 'rsong',
+      trackMutes,
+    })
+  },
 
   loadProductions: async () => {
     set({ productionsLoading: true, productionsError: null })
@@ -56,6 +66,11 @@ export const useCadenceStore = create((set, get) => ({
     try {
       const rsong = await fetchProduction(filename)
       const header = rsong.header || {}
+      const trackMutes = {}
+      for (const t of rsong?.tracks || []) {
+        const id = t.instrument_id || t.id
+        trackMutes[id] = false
+      }
       set({
         rsong,
         meta: {
@@ -67,6 +82,7 @@ export const useCadenceStore = create((set, get) => ({
         },
         currentProductionId: filename,
         playbackSource: 'rsong',
+        trackMutes,
         productionsLoading: false,
         view: 'chat',
       })
@@ -82,6 +98,23 @@ export const useCadenceStore = create((set, get) => ({
   setAudioLoading: (v) => set({ isAudioLoading: v }),
 
   setPlaybackSource: (playbackSource) => set({ playbackSource }),
+
+  toggleTrackMute: (trackId) => set((s) => ({
+    trackMutes: {
+      ...s.trackMutes,
+      [trackId]: !s.trackMutes[trackId],
+    },
+  })),
+
+  setAllTrackMutes: (muted) => set((s) => {
+    const next = { ...s.trackMutes }
+    for (const id of Object.keys(next)) {
+      next[id] = muted
+    }
+    return { trackMutes: next }
+  }),
+
+  isTrackMuted: (trackId) => !!get().trackMutes[trackId],
 
   setCurrentTime: (ms) => {
     set((s) => {

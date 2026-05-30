@@ -7,10 +7,10 @@ from collections import defaultdict
 from cadence.agent.nodes.melody import _get_scale_pitches
 from cadence.agent.nodes.narrative_apply import melody_rest_ratio, section_intent_map
 from cadence.music.melody_density_policy import (
-    is_dense_melody_target,
     melody_notes_per_bar_target,
     melody_rest_ratio_for_intent,
 )
+from cadence.music.voice_register_profile import VoiceRegisterProfile
 from cadence.schemas.song_state import RhythmEvent, SongState, Track
 
 MELODY_PITCH_MIN = 60   # C4
@@ -225,78 +225,43 @@ def densify_melody(
     return sorted(events + extra, key=lambda e: e.t)
 
 
-def _should_densify(
-    intent_map: dict,
-    use_case: str,
-    melody_texture: str = "balanced",
-    energy_level: int = 3,
-    composition_archetype: str | None = None,
-) -> bool:
-    if composition_archetype == "chiptune_dance":
-        return True
-    if composition_archetype == "compact_action":
-        return energy_level >= 4
-    if melody_texture in ("dense", "percussive"):
-        return True
-    if melody_texture == "sparse":
-        return False
-    if energy_level >= 4 and use_case == "game":
-        return True
-    if use_case in ("loop", "cutscene") and melody_texture != "dense":
-        return False
-    return energy_level >= 3 and use_case == "game"
+def apply_lead_articulation(
+    events: list[RhythmEvent],
+    bpm: int,
+    profile: VoiceRegisterProfile,
+) -> list[RhythmEvent]:
+    """Alarga notas cuando el perfil pide legato/mixed (menos staccato agotador)."""
+    if profile.lead_articulation == "staccato" or not events:
+        return events
 
+    step_ms = ms_per_step(bpm)
+    min_dur = step_ms * profile.min_melody_duration_steps
+    sorted_ev = sorted(events, key=lambda e: e.t)
+    result: list[RhythmEvent] = []
 
-def _should_fill_gaps(intent_map: dict, use_case: str, melody_texture: str = "balanced") -> bool:
-    if melody_texture == "sparse":
-        return False
-    if use_case == "loop":
-        return False
-    if use_case == "cutscene" and melody_texture != "percussive":
-        return False
-    return True
+    for i, event in enumerate(sorted_ev):
+        if i + 1 < len(sorted_ev):
+            next_t = sorted_ev[i + 1].t
+            max_dur = max(min_dur, (next_t - event.t) * 0.82)
+        else:
+            max_dur = min_dur * 2.5
+        stretch = 2.2 if profile.lead_articulation == "legato" else 1.5
+        new_dur = int(min(max_dur, max(min_dur, event.duration_ms * stretch)))
+        result.append(event.model_copy(update={"duration_ms": new_dur}))
+
+    return result
 
 
 def _min_notes_per_bar(
-    use_case: str,
+    profile: VoiceRegisterProfile,
     energy: int,
-    melody_texture: str = "balanced",
-    composition_archetype: str | None = None,
     micro_phrase_variance: float = 0.5,
 ) -> int:
-    if is_dense_melody_target(
-        composition_archetype,
-        energy_level=energy,
-        melody_texture=melody_texture,
-        use_case=use_case,
-    ):
-        base = melody_notes_per_bar_target(
-            composition_archetype, energy,
-            melody_texture=melody_texture, use_case=use_case,
-        )
+    if profile.allow_densify:
+        base = profile.notes_per_bar_target(energy, narrative_role="climax")
         boost = int(round(micro_phrase_variance * 2))
         return min(11, base + boost)
-    uc = (use_case or "game").lower()
-    if composition_archetype == "chiptune_dance":
-        base = 9 if energy >= 5 else 8
-    elif composition_archetype == "compact_action":
-        base = 6 if energy >= 4 else 5
-    elif melody_texture == "sparse":
-        base = 4 if uc == "loop" else 3
-    elif melody_texture in ("dense", "percussive"):
-        base = 8 if energy >= 5 else (6 if energy >= 4 else 5)
-    elif uc == "loop":
-        base = 4
-    elif uc == "cutscene":
-        base = 5
-    elif energy >= 5:
-        base = 6
-    elif energy >= 4:
-        base = 5
-    else:
-        base = 4
-    boost = int(round(micro_phrase_variance * 2))
-    return min(10, base + boost)
+    return profile.notes_per_bar_target(energy, narrative_role="climax")
 
 
 def process_melody_events(
@@ -311,10 +276,21 @@ def process_melody_events(
     melody_texture: str = "balanced",
     composition_archetype: str | None = None,
     creative_variation: object | None = None,
+    voice_register: VoiceRegisterProfile | None = None,
 ) -> list[RhythmEvent]:
-    """Pipeline de post-proceso melódico — respeta silencios según estilo."""
+    """Pipeline de post-proceso melódico — respeta VoiceRegisterProfile."""
     if not events:
         return events
+
+    if voice_register is None:
+        from cadence.music.voice_register_profile import resolve_voice_register_profile
+
+        voice_register = resolve_voice_register_profile(
+            composition_archetype=composition_archetype or "default_game",
+            energy_level=energy_level,
+            use_case=use_case,
+            melody_texture=melody_texture,
+        )
 
     scale_pitches = _get_scale_pitches(key, mode)
     climax_sections = {
@@ -328,32 +304,25 @@ def process_melody_events(
     if isinstance(creative_variation, CreativeVariationBounds):
         micro_var = creative_variation.micro_phrase_variance
 
-    if _should_densify(
-        intent_map, use_case, melody_texture, energy_level, composition_archetype,
-    ):
+    if voice_register.allow_densify:
         events = densify_melody(
             events, bpm, scale_pitches, intent_map,
-            min_notes_per_bar=_min_notes_per_bar(
-                use_case,
-                energy_level,
-                melody_texture,
-                composition_archetype,
-                micro_var,
-            ),
+            min_notes_per_bar=_min_notes_per_bar(voice_register, energy_level, micro_var),
         )
-    if _should_fill_gaps(intent_map, use_case, melody_texture):
+    if voice_register.allow_fill_gaps:
         events = fill_melody_gaps(
             events,
             bpm,
             scale_pitches,
             intent_map,
             use_case=use_case,
-            composition_archetype=composition_archetype,
+            composition_archetype=voice_register.composition_archetype,
         )
 
     events = limit_melody_leaps(
         events, scale_pitches, climax_sections, energy_level, use_case,
     )
+    events = apply_lead_articulation(events, bpm, voice_register)
     events = clamp_melody_register(events)
     return sorted(events, key=lambda e: e.t)
 
@@ -384,8 +353,14 @@ def _maybe_quantize_to_harmony(
     energy = proposal.energy_level
     use_case = intent.use_case if intent else "game"
     active = active_instrument_ids_from_plan(plan)
+    from cadence.music.voice_register_profile import profile_from_state
+
+    vrp = profile_from_state(state)
     if not should_quantize_melody_to_chords(
-        count_harmonic_support_layers(active), energy, use_case,
+        count_harmonic_support_layers(active),
+        energy,
+        use_case,
+        voice_register=vrp,
     ):
         return events
 
@@ -415,12 +390,15 @@ def process_melody_track(track: Track, state: SongState) -> Track:
         melody_texture_for_archetype,
     )
 
+    from cadence.music.voice_register_profile import profile_from_state
+
     archetype = get_composition_archetype(state)
     orch = state.get("orchestration_plan")
     requested = orch.melody_texture if orch else "balanced"
     melody_texture = melody_texture_for_archetype(
         archetype, energy, intent.use_case, requested,
     )
+    voice_register = profile_from_state(state)
 
     events = process_melody_events(
         track.events,
@@ -433,6 +411,7 @@ def process_melody_track(track: Track, state: SongState) -> Track:
         melody_texture=melody_texture,
         composition_archetype=archetype,
         creative_variation=state.get("creative_variation"),
+        voice_register=voice_register,
     )
     events = _maybe_quantize_to_harmony(events, state, bpm=bpm, key=key, mode=mode)
     return track.model_copy(update={"events": events})

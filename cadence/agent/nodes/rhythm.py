@@ -197,6 +197,7 @@ def _generate_bass_track(
     *,
     development=None,
     generation_seed: int = 0,
+    voice_register=None,
 ) -> Track:
     step_ms = _ms_per_step(bpm)
     steps_per_bar = 16
@@ -208,6 +209,9 @@ def _generate_bass_track(
     intent_map = intent_map or {}
     harmony_map = section_harmony_map(harmony)
     base_bass_id = bass_pattern_id or "root_fifth"
+    if voice_register is not None:
+        base_bass_id = voice_register.normalize_bass_pattern_id(base_bass_id)
+    bass_dur_factor = voice_register.bass_duration_factor if voice_register else 1.8
     dev_map = section_development_map(development)
 
     for section in sections:
@@ -237,6 +241,8 @@ def _generate_bass_track(
                     generation_seed + hash(section) % 9973 + 3,
                     BASS_POOL,
                 )
+                if voice_register is not None:
+                    pid = voice_register.normalize_bass_pattern_id(pid)
                 bass_steps = get_bass_pattern(pid)
 
             if section_h:
@@ -246,12 +252,16 @@ def _generate_bass_track(
                 fifth_pitch = tones[2] if len(tones) > 2 else root_pitch + 7
                 for step, role in bass_steps:
                     pitch = root_pitch if role == "root" else fifth_pitch
-                    vel = base_vel if step % 4 == 0 else max(45, base_vel - 15)
+                    on_downbeat = step % 4 == 0
+                    vel = base_vel if on_downbeat else max(40, base_vel - 18)
+                    if voice_register and voice_register.bass_grid_tier in ("half", "quarter"):
+                        if not on_downbeat:
+                            vel = max(38, vel - 10)
                     events.append(RhythmEvent(
                         t=int(current_t + step * step_ms),
                         type="note",
                         pitch=pitch + octave_shift,
-                        duration_ms=int(step_ms * 1.8),
+                        duration_ms=int(step_ms * bass_dur_factor),
                         velocity=vel,
                         beat_index=beat_index + step,
                         section=section,
@@ -265,7 +275,7 @@ def _generate_bass_track(
                             t=int(current_t + step * step_ms),
                             type="note",
                             pitch=root_midi + interval + octave_shift,
-                            duration_ms=int(step_ms * 1.8),
+                            duration_ms=int(step_ms * bass_dur_factor),
                             velocity=vel,
                             beat_index=beat_index + step,
                             section=section,
@@ -311,6 +321,9 @@ def rhythm_engine_node(state: SongState) -> dict:
     development = state.get("development")
     intent_map = section_intent_map_from_state(state, context="rhythm_engine")
     gen_seed = state.get("generation_seed", 0)
+    from cadence.music.voice_register_profile import profile_from_state
+
+    voice_register = profile_from_state(state)
 
     drums = _generate_drum_track(
         sections=structure.sections,
@@ -334,6 +347,7 @@ def rhythm_engine_node(state: SongState) -> dict:
         bass_pattern_id=strategies.bass_pattern if strategies else None,
         development=development,
         generation_seed=gen_seed,
+        voice_register=voice_register,
     )
 
     existing = [t for t in state.get("tracks", []) if t.id not in ("drums", "bass")]

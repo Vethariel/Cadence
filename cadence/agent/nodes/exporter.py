@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from cadence.music.style_archetype import get_archetype_reason, get_composition_archetype
+from cadence.music.voice_register_profile import profile_from_state
 from cadence.music.quality_status import compute_quality_metadata
 from cadence.music.style_profile import effective_genre_tags
 from cadence.schemas.song_state import SongState
@@ -170,6 +171,11 @@ def _build_rsong(state: SongState) -> dict:
         "game_meta": {
             "composition_archetype": get_composition_archetype(state),
             "archetype_reason": get_archetype_reason(state),
+            "voice_register": (
+                state["voice_register_profile"]
+                if state.get("voice_register_profile")
+                else profile_from_state(state).to_dict()
+            ),
             "use_case": intent.use_case,
             "loop_point_ms": _compute_loop_point(state),
             "intensity_curve": _compute_intensity_curve(state),

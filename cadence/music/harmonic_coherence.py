@@ -40,8 +40,12 @@ def should_quantize_melody_to_chords(
     harmonic_support_count: int,
     energy_level: int,
     use_case: str,
+    *,
+    voice_register=None,
 ) -> bool:
     """Varias capas en acordes + pieza intensa → melodía al acorde del compás."""
+    if voice_register is not None:
+        return voice_register.quantize_lead_to_harmony
     uc = (use_case or "game").lower()
     return harmonic_support_count >= 2 and energy_level >= 4 and uc == "game"
 
@@ -303,7 +307,12 @@ def apply_harmonic_coherence_to_state(state: SongState) -> dict:
     active = active_instrument_ids_from_plan(plan)
     n_harmonic = count_harmonic_support_layers(active)
 
-    if not should_quantize_melody_to_chords(n_harmonic, energy, use_case):
+    from cadence.music.voice_register_profile import profile_from_state
+
+    vrp = profile_from_state(state)
+    if not should_quantize_melody_to_chords(
+        n_harmonic, energy, use_case, voice_register=vrp,
+    ):
         return {}
 
     result = []

@@ -11,7 +11,7 @@ _RECENT_WINDOW = 4
 _ARCHETYPE_FIELD_BIAS: dict[str, dict[str, dict[str, float]]] = {
     "orchestral_boss": {
         "drum": {"breakbeat": 2.0, "industrial": 1.5, "dubstep": 1.2},
-        "bass": {"driving": 2.0, "octave_pulse": 1.8},
+        "bass": {"half_time": 2.5, "root_fifth": 2.2, "pulse": 1.8, "syncopated": 1.2},
         "stab": {"orchestral_sync": 3.0},
         "counter": {"orchestral_sync": 2.5},
     },
@@ -123,6 +123,24 @@ def compute_candidate_weights(
                 _apply_table_bias(
                     weights, pid, mood_tables.get(field, {}), multiplier=1.5,
                 )
+
+    if field == "bass" and composition_archetype:
+        from cadence.music.voice_register_profile import (
+            BASS_BY_TIER,
+            resolve_voice_register_profile,
+        )
+
+        tier = resolve_voice_register_profile(
+            composition_archetype=composition_archetype,
+            energy_level=energy_level,
+        ).bass_grid_tier
+        allowed = set(BASS_BY_TIER.get(tier, ()))
+        for pid in candidates:
+            fam = pattern_family(pid)
+            if fam in allowed or pid in allowed:
+                weights[pid] = weights.get(pid, 0.0) + 2.5
+            elif allowed:
+                weights[pid] = weights.get(pid, 1.0) * 0.25
 
     for pid in candidates:
         weights.setdefault(pid, 1.0)
