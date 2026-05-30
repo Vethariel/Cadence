@@ -143,7 +143,6 @@ export default function Chat() {
     isGenerating,
     addMessage,
     setGenerating,
-    setResult,
     selectProduction,
     currentProductionId,
   } = useCadenceStore()
@@ -235,25 +234,6 @@ export default function Chat() {
         }),
       }))
 
-      setResult(
-        data.rsong,
-        {
-          title: data.rsong?.header?.title,
-          bpm: data.bpm,
-          key: data.key,
-          mode: data.rsong?.header?.mode,
-          meter: data.rsong?.header?.meter,
-          archetype: data.rsong?.game_meta?.policy?.archetype,
-          pattern_id: data.rsong?.game_meta?.policy?.pattern_id,
-          active_instruments:
-            data.rsong?.game_meta?.arrangement?.active_instruments || [],
-          sections: data.sections,
-          duration_ms: data.duration_ms,
-          knowledge_level: data.knowledge_level,
-          validation_score: data.validation_score,
-        },
-        productionId ?? null
-      )
     } catch (err) {
       useCadenceStore.setState(s => ({
         messages: s.messages.slice(0, -1).concat({
