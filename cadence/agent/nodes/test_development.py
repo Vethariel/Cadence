@@ -160,7 +160,7 @@ def test_apply_development_changes_degrees():
         MelodyNote(scale_degree=2, duration_steps=4, velocity=80),
     ]
     dev = build_development_plan(["s"], [0, 2, 4], generation_seed=1).sections[0]
-    dev = dev.model_copy(update={"transform": "sequence_up"})
+    dev = dev.model_copy(update={"transform": "sequence_up", "contour": "ascending"})
     c0 = apply_development_to_notes(notes, dev, cycle_idx=0, phrase_idx=0)
     c1 = apply_development_to_notes(notes, dev, cycle_idx=1, phrase_idx=0)
     assert c0[0].scale_degree != c1[0].scale_degree

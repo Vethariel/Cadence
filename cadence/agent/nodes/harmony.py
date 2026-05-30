@@ -35,6 +35,7 @@ def harmony_planner_node(state: SongState) -> dict:
         narrative_sections=intent_map,
         harmony_pool=state.get("strategies").harmony_pool if state.get("strategies") else None,
         use_case=intent.use_case,
+        cadence_plan=proposal.cadence_plan if proposal else None,
     )
 
     return {"harmony": harmony}

@@ -246,9 +246,17 @@ def build_section_segments(
     *,
     use_case: str = "game",
     energy_level: int = 3,
+    transform_override: str | None = None,
+    density_override: float | None = None,
+    rhythmic_density_override: float | None = None,
 ) -> list[DevelopmentSegment]:
     role = intent.narrative_role if intent else "establish"
-    density = intent.density if intent else 0.5
+    base_density = intent.density if intent else 0.5
+    if density_override is not None:
+        base_density = density_override
+    if rhythmic_density_override is not None:
+        base_density = max(base_density, rhythmic_density_override)
+    density = max(0.0, min(1.0, base_density))
     section_seed = (seed + hash(section_id)) % 9973
     motif = global_motif or DEFAULT_MOTIF
 
@@ -260,6 +268,11 @@ def build_section_segments(
     )
     bounds = _segment_boundaries(section_bars, n_seg)
     transforms = _segment_transforms(role, len(bounds), section_seed)
+    valid_overrides = set(ROLE_TO_TRANSFORM.values()) | {
+        "invert", "ostinato", "augment", "call_response", "pedal",
+    }
+    if transform_override and transform_override in valid_overrides:
+        transforms[0] = transform_override
 
     segments: list[DevelopmentSegment] = []
     for idx, ((start, end), transform) in enumerate(zip(bounds, transforms)):
@@ -284,10 +297,20 @@ def build_section_development(
     *,
     section_bars: int = 4,
     use_case: str = "game",
+    transform_override: str | None = None,
+    density_override: float | None = None,
+    rhythmic_density_override: float | None = None,
 ) -> SectionDevelopment:
     role = intent.narrative_role if intent else "establish"
     density = intent.density if intent else 0.5
+    if density_override is not None:
+        density = density_override
+    if rhythmic_density_override is not None:
+        density = max(density, rhythmic_density_override)
+    density = max(0.0, min(1.0, density))
     transform = ROLE_TO_TRANSFORM.get(role, "introduce")
+    if transform_override:
+        transform = transform_override
     section_seed = (seed + hash(section_id)) % 9973
     motif = global_motif or DEFAULT_MOTIF
 
@@ -299,6 +322,9 @@ def build_section_development(
         seed,
         use_case=use_case,
         energy_level=energy_level,
+        transform_override=transform_override,
+        density_override=density_override,
+        rhythmic_density_override=rhythmic_density_override,
     )
 
     # Resumen de sección = primer segmento (compatibilidad) o rol global si no hay split
@@ -340,6 +366,9 @@ def build_development_plan(
     bars_per_section: dict[str, int] | None = None,
     use_case: str = "game",
     composition_archetype: str | None = None,
+    section_intensity_curve: dict[str, float] | None = None,
+    rhythmic_density_curve: dict[str, float] | None = None,
+    motif_transform_plan: dict[str, str] | None = None,
 ) -> DevelopmentPlan:
     motif = global_motif or DEFAULT_MOTIF
     bars_map = bars_per_section or {}
@@ -352,6 +381,9 @@ def build_development_plan(
             energy_level=energy_level,
             section_bars=bars_map.get(s, 4),
             use_case=use_case,
+            transform_override=(motif_transform_plan or {}).get(s),
+            density_override=(section_intensity_curve or {}).get(s),
+            rhythmic_density_override=(rhythmic_density_curve or {}).get(s),
         )
         for s in sections
     ]

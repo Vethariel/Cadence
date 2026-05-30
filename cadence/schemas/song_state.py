@@ -96,6 +96,8 @@ class CreativeBrief(BaseModel):
 
 
 InstrumentRole = Literal["lead", "bass", "rhythm", "pad", "fx"]
+CadenceType = Literal["authentic", "half", "deceptive", "plagal", "suspended"]
+RegisterBand = Literal["low", "mid", "high", "wide"]
 
 
 class ProposalInstrument(BaseModel):
@@ -197,6 +199,48 @@ class TechnicalProposal(BaseModel):
     global_motif: list[int] = Field(
         default_factory=list,
         description="3–5 grados 0–6 del motivo principal; vacío = derivar.",
+    )
+    section_intensity_curve: dict[str, float] = Field(
+        default_factory=dict,
+        description="Intensidad por sección (0–1). Claves: section_id canónico.",
+    )
+    rhythmic_density_curve: dict[str, float] = Field(
+        default_factory=dict,
+        description="Densidad rítmica por sección (0–1).",
+    )
+    motif_transform_plan: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Transformación motívica por sección: introduce|sequence_up|sequence_down|"
+            "invert|fragment|expand|climax|resolve|sparse|ostinato|augment|"
+            "call_response|pedal."
+        ),
+    )
+    cadence_plan: dict[str, CadenceType] = Field(
+        default_factory=dict,
+        description="Tipo de cadencia por sección: authentic|half|deceptive|plagal|suspended.",
+    )
+    lead_hierarchy: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Prioridad de capas lead (instrument_id), de más protagonista a menos."
+        ),
+    )
+    register_plan: dict[str, RegisterBand] = Field(
+        default_factory=dict,
+        description="Registro objetivo por capa (low|mid|high|wide).",
+    )
+    call_response_map: dict[str, str] = Field(
+        default_factory=dict,
+        description="Mapa sección->'caller:responder' usando instrument_id.",
+    )
+    silence_breaks: list[int] = Field(
+        default_factory=list,
+        description="Compases globales (0-based) donde forzar micro-silencio expresivo.",
+    )
+    tension_points: list[int] = Field(
+        default_factory=list,
+        description="Compases globales (0-based) donde marcar picos de tensión.",
     )
     reasoning: str = ""
 

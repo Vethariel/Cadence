@@ -1,0 +1,575 @@
+{
+  "version": 1,
+  "generated_at_utc": "2026-05-30T18:22:26.390379+00:00",
+  "source": "derived_from_local_midi_metrics",
+  "profiles": {
+    "sparse_loop": {
+      "label": "Loop / ambiente",
+      "description": "Pocas capas sostenidas, melodía espaciada, armonía clara.",
+      "reference_count": 3,
+      "references_used": [
+        "Its_Pizza_Time.mid",
+        "Sweden_-_Minecraft.mid",
+        "pokefrlg_lavender_town.mid"
+      ],
+      "target_metrics": {
+        "layers_active_mean": [
+          2.0,
+          3.321
+        ],
+        "layers_active_max": [
+          2.0,
+          5.0
+        ],
+        "melody_notes_per_bar": [
+          3.87,
+          4.207
+        ],
+        "melody_leap_ratio": [
+          0.205,
+          0.749
+        ],
+        "melody_rest_ratio": [
+          0.045,
+          1.0
+        ],
+        "chord_changes_per_bar": [
+          0.488,
+          1.0
+        ],
+        "register_octaves_mean": [
+          2.94,
+          3.694
+        ]
+      },
+      "style_cues": [
+        "stack_medio_controlado",
+        "melodia_espaciada",
+        "saltos_amplios",
+        "fraseo_con_respiros",
+        "ritmo_armonico_rapido",
+        "evitar_copia_literal_de_melodias"
+      ]
+    },
+    "moderate_cinematic": {
+      "label": "Cutscene / moderado",
+      "description": "Densidad media, cambios de acorde frecuentes, registro contenido.",
+      "reference_count": 3,
+      "references_used": [
+        "MILF.mid",
+        "corridor.mid",
+        "z5gerudo.mid"
+      ],
+      "target_metrics": {
+        "layers_active_mean": [
+          2.898,
+          4.0
+        ],
+        "layers_active_max": [
+          4.0,
+          4.0
+        ],
+        "melody_notes_per_bar": [
+          6.196,
+          7.417
+        ],
+        "melody_leap_ratio": [
+          0.083,
+          0.464
+        ],
+        "melody_rest_ratio": [
+          0.023,
+          0.098
+        ],
+        "chord_changes_per_bar": [
+          0.909,
+          0.99
+        ],
+        "register_octaves_mean": [
+          2.551,
+          3.875
+        ]
+      },
+      "style_cues": [
+        "stack_medio_controlado",
+        "melodia_moderada",
+        "saltos_amplios",
+        "fraseo_continuo",
+        "ritmo_armonico_rapido",
+        "evitar_copia_literal_de_melodias"
+      ]
+    },
+    "dense_dance": {
+      "label": "Battle / dance denso",
+      "description": "Melodía muy densa, saltos amplios, capas medias-altas.",
+      "reference_count": 3,
+      "references_used": [
+        "Bad Apple!!.mid",
+        "UT_Spider_Dance_v2_Lu9.mid",
+        "Kraid.mid"
+      ],
+      "target_metrics": {
+        "layers_active_mean": [
+          3.0,
+          7.429
+        ],
+        "layers_active_max": [
+          3.0,
+          11.0
+        ],
+        "melody_notes_per_bar": [
+          7.4,
+          15.467
+        ],
+        "melody_leap_ratio": [
+          0.355,
+          0.444
+        ],
+        "melody_rest_ratio": [
+          0.009,
+          0.027
+        ],
+        "chord_changes_per_bar": [
+          0.0,
+          0.896
+        ],
+        "register_octaves_mean": [
+          3.286,
+          4.633
+        ]
+      },
+      "style_cues": [
+        "stack_denso_multicapa",
+        "melodia_muy_activa",
+        "saltos_amplios",
+        "fraseo_continuo",
+        "evitar_copia_literal_de_melodias"
+      ]
+    },
+    "energetic_game": {
+      "label": "Boss energético / game action",
+      "description": "Stack compacto (~3 capas), melodía activa, saltos altos.",
+      "reference_count": 2,
+      "references_used": [
+        "Kraid.mid",
+        "corridor.mid"
+      ],
+      "target_metrics": {
+        "layers_active_mean": [
+          2.898,
+          3.0
+        ],
+        "layers_active_max": [
+          3.0,
+          4.0
+        ],
+        "melody_notes_per_bar": [
+          6.795,
+          7.4
+        ],
+        "melody_leap_ratio": [
+          0.444,
+          0.464
+        ],
+        "melody_rest_ratio": [
+          0.023,
+          0.027
+        ],
+        "chord_changes_per_bar": [
+          0.429,
+          0.909
+        ],
+        "register_octaves_mean": [
+          3.286,
+          3.466
+        ]
+      },
+      "style_cues": [
+        "stack_compacto_o_sparse",
+        "melodia_moderada",
+        "saltos_amplios",
+        "fraseo_continuo",
+        "ritmo_armonico_rapido",
+        "evitar_copia_literal_de_melodias"
+      ]
+    },
+    "orchestral_boss": {
+      "label": "Boss / orquestal",
+      "description": "Muchas capas simultáneas, registro amplio, melodía moderada.",
+      "reference_count": 2,
+      "references_used": [
+        "ASGORE.mid",
+        "UT_Spider_Dance_v2_Lu9.mid"
+      ],
+      "target_metrics": {
+        "layers_active_mean": [
+          7.429,
+          8.952
+        ],
+        "layers_active_max": [
+          11.0,
+          17.0
+        ],
+        "melody_notes_per_bar": [
+          4.984,
+          15.467
+        ],
+        "melody_leap_ratio": [
+          0.144,
+          0.428
+        ],
+        "melody_rest_ratio": [
+          0.009,
+          0.128
+        ],
+        "chord_changes_per_bar": [
+          0.482,
+          0.896
+        ],
+        "register_octaves_mean": [
+          4.633,
+          5.181
+        ]
+      },
+      "style_cues": [
+        "stack_denso_multicapa",
+        "melodia_muy_activa",
+        "saltos_amplios",
+        "fraseo_continuo",
+        "evitar_copia_literal_de_melodias"
+      ]
+    },
+    "lofi_downtempo": {
+      "label": "Lofi Downtempo",
+      "description": "Perfil derivado por clasificación nominal del corpus local.",
+      "reference_count": 3,
+      "references_used": [
+        "1PM.mid",
+        "Animal Crossing_ New Leaf - 1AM Original.mid",
+        "Beneath The Mask (Persona 5).mid"
+      ],
+      "target_metrics": {
+        "layers_active_mean": [
+          1.889,
+          4.337
+        ],
+        "layers_active_max": [
+          2.0,
+          5.0
+        ],
+        "melody_notes_per_bar": [
+          2.982,
+          8.0
+        ],
+        "melody_leap_ratio": [
+          0.179,
+          0.873
+        ],
+        "melody_rest_ratio": [
+          0.002,
+          0.055
+        ],
+        "chord_changes_per_bar": [
+          0.0,
+          1.0
+        ],
+        "register_octaves_mean": [
+          2.737,
+          4.122
+        ]
+      },
+      "style_cues": [
+        "stack_medio_controlado",
+        "melodia_moderada",
+        "saltos_amplios",
+        "fraseo_continuo",
+        "ritmo_armonico_rapido",
+        "evitar_copia_literal_de_melodias"
+      ]
+    },
+    "compact_action": {
+      "label": "Compact Action",
+      "description": "Perfil derivado por clasificación nominal del corpus local.",
+      "reference_count": 1,
+      "references_used": [
+        "Contra jungle theme.mid.mid"
+      ],
+      "target_metrics": {
+        "layers_active_mean": [
+          1.938,
+          1.938
+        ],
+        "layers_active_max": [
+          2.0,
+          2.0
+        ],
+        "melody_notes_per_bar": [
+          3.2,
+          3.2
+        ],
+        "melody_leap_ratio": [
+          0.452,
+          0.452
+        ],
+        "melody_rest_ratio": [
+          0.355,
+          0.355
+        ],
+        "chord_changes_per_bar": [
+          1.0,
+          1.0
+        ],
+        "register_octaves_mean": [
+          3.785,
+          3.785
+        ]
+      },
+      "style_cues": [
+        "stack_compacto_o_sparse",
+        "melodia_espaciada",
+        "saltos_amplios",
+        "fraseo_con_respiros",
+        "ritmo_armonico_rapido",
+        "evitar_copia_literal_de_melodias"
+      ]
+    },
+    "industrial_combat": {
+      "label": "Industrial Combat",
+      "description": "Perfil derivado por clasificación nominal del corpus local.",
+      "reference_count": 2,
+      "references_used": [
+        "DoomHangar.mid",
+        "Quake_II_-_Quad_Machine.mid"
+      ],
+      "target_metrics": {
+        "layers_active_mean": [
+          2.729,
+          3.13
+        ],
+        "layers_active_max": [
+          3.0,
+          5.0
+        ],
+        "melody_notes_per_bar": [
+          5.8,
+          7.975
+        ],
+        "melody_leap_ratio": [
+          0.158,
+          0.566
+        ],
+        "melody_rest_ratio": [
+          0.016,
+          0.158
+        ],
+        "chord_changes_per_bar": [
+          0.0,
+          0.102
+        ],
+        "register_octaves_mean": [
+          2.713,
+          2.979
+        ]
+      },
+      "style_cues": [
+        "stack_medio_controlado",
+        "melodia_moderada",
+        "saltos_amplios",
+        "fraseo_continuo",
+        "ritmo_armonico_lento",
+        "evitar_copia_literal_de_melodias"
+      ]
+    },
+    "hybrid_epic": {
+      "label": "Hybrid Epic",
+      "description": "Perfil derivado por clasificación nominal del corpus local.",
+      "reference_count": 2,
+      "references_used": [
+        "Ace Combat 04 - Megalith (Piano).mid.mid",
+        "HaloSebKomplett2.mid"
+      ],
+      "target_metrics": {
+        "layers_active_mean": [
+          1.989,
+          3.491
+        ],
+        "layers_active_max": [
+          2.0,
+          8.0
+        ],
+        "melody_notes_per_bar": [
+          1.967,
+          4.524
+        ],
+        "melody_leap_ratio": [
+          0.405,
+          0.462
+        ],
+        "melody_rest_ratio": [
+          0.141,
+          0.325
+        ],
+        "chord_changes_per_bar": [
+          0.852,
+          0.977
+        ],
+        "register_octaves_mean": [
+          3.943,
+          4.075
+        ]
+      },
+      "style_cues": [
+        "stack_medio_controlado",
+        "melodia_espaciada",
+        "saltos_amplios",
+        "fraseo_con_respiros",
+        "ritmo_armonico_rapido",
+        "evitar_copia_literal_de_melodias"
+      ]
+    },
+    "menu_theme": {
+      "label": "Menu Theme",
+      "description": "Perfil derivado por clasificación nominal del corpus local.",
+      "reference_count": 2,
+      "references_used": [
+        "FF1-7prelude.mid",
+        "KH358-2days_dearly_beloved.mid"
+      ],
+      "target_metrics": {
+        "layers_active_mean": [
+          4.689,
+          8.039
+        ],
+        "layers_active_max": [
+          7.0,
+          12.0
+        ],
+        "melody_notes_per_bar": [
+          2.273,
+          15.649
+        ],
+        "melody_leap_ratio": [
+          0.111,
+          0.202
+        ],
+        "melody_rest_ratio": [
+          0.0,
+          0.04
+        ],
+        "chord_changes_per_bar": [
+          0.0,
+          0.946
+        ],
+        "register_octaves_mean": [
+          4.51,
+          4.541
+        ]
+      },
+      "style_cues": [
+        "stack_denso_multicapa",
+        "melodia_muy_activa",
+        "fraseo_continuo",
+        "ritmo_armonico_rapido",
+        "evitar_copia_literal_de_melodias"
+      ]
+    },
+    "stealth_tension": {
+      "label": "Stealth Tension",
+      "description": "Perfil derivado por clasificación nominal del corpus local.",
+      "reference_count": 2,
+      "references_used": [
+        "MGS.mid",
+        "PC_Deus_Ex_UNATCO.mid"
+      ],
+      "target_metrics": {
+        "layers_active_mean": [
+          2.75,
+          3.558
+        ],
+        "layers_active_max": [
+          4.0,
+          7.0
+        ],
+        "melody_notes_per_bar": [
+          4.457,
+          16.0
+        ],
+        "melody_leap_ratio": [
+          0.247,
+          0.656
+        ],
+        "melody_rest_ratio": [
+          0.0,
+          0.116
+        ],
+        "chord_changes_per_bar": [
+          0.762,
+          1.0
+        ],
+        "register_octaves_mean": [
+          3.053,
+          3.781
+        ]
+      },
+      "style_cues": [
+        "stack_medio_controlado",
+        "melodia_muy_activa",
+        "saltos_amplios",
+        "fraseo_continuo",
+        "ritmo_armonico_rapido",
+        "evitar_copia_literal_de_melodias"
+      ]
+    },
+    "default_game": {
+      "label": "Default Game",
+      "description": "Perfil derivado por clasificación nominal del corpus local.",
+      "reference_count": 6,
+      "references_used": [
+        "Glight_V4.mid",
+        "Its_Pizza_Time.mid",
+        "SMW_Overworld_smwwd1_Lu9.mid",
+        "TH6_UN_Owen_was_Her_Lu9.mid",
+        "T_AkumajouDraculaMSX_VampireKiller.mid",
+        "piano_introduction.mid"
+      ],
+      "target_metrics": {
+        "layers_active_mean": [
+          1.818,
+          7.875
+        ],
+        "layers_active_max": [
+          2.0,
+          9.0
+        ],
+        "melody_notes_per_bar": [
+          3.333,
+          14.846
+        ],
+        "melody_leap_ratio": [
+          0.016,
+          0.545
+        ],
+        "melody_rest_ratio": [
+          0.005,
+          0.333
+        ],
+        "chord_changes_per_bar": [
+          0.472,
+          1.0
+        ],
+        "register_octaves_mean": [
+          2.652,
+          5.244
+        ]
+      },
+      "style_cues": [
+        "stack_denso_multicapa",
+        "melodia_muy_activa",
+        "saltos_amplios",
+        "fraseo_con_respiros",
+        "ritmo_armonico_rapido",
+        "evitar_copia_literal_de_melodias"
+      ]
+    }
+  }
+}

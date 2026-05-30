@@ -3,6 +3,8 @@
 from cadence.schemas.song_state import (
     ArrangementPlan,
     LayerSpec,
+    LayerSchedule,
+    LayerScheduleEntry,
     OrchestrationPlan,
     SongState,
 )
@@ -93,6 +95,117 @@ LAYER_DEFAULTS: dict[str, tuple[str, float, float]] = {
     "arp_synth": ("loop_1bar", -12.0, DENSITY_ARP),
     "synth_pluck": ("loop_1bar", -11.0, DENSITY_PLUCK),
 }
+
+
+def _apply_lead_hierarchy(layers: list[LayerSpec], hierarchy: list[str]) -> list[LayerSpec]:
+    if not hierarchy:
+        return layers
+    rank = {iid: idx for idx, iid in enumerate(hierarchy)}
+
+    def _key(layer: LayerSpec) -> tuple[int, int, str]:
+        is_lead = 0 if layer.role == "lead" else 1
+        return (
+            is_lead,
+            rank.get(layer.instrument_id, 999),
+            layer.instrument_id,
+        )
+
+    return sorted(layers, key=_key)
+
+
+def _apply_call_response(
+    layers: list[LayerSpec],
+    call_response_map: dict[str, str],
+) -> list[LayerSpec]:
+    if not call_response_map:
+        return layers
+    by_id = {l.instrument_id: l for l in layers}
+    for section_id, pair in call_response_map.items():
+        if ":" not in pair:
+            continue
+        caller, responder = [x.strip().lower() for x in pair.split(":", 1)]
+        if caller not in by_id or responder not in by_id:
+            continue
+        for iid in (caller, responder):
+            layer = by_id[iid]
+            sections = list(layer.active_sections)
+            if sections == ["*"]:
+                continue
+            if section_id not in sections:
+                sections.append(section_id)
+                by_id[iid] = layer.model_copy(update={"active_sections": sections})
+    return [by_id[l.instrument_id] for l in layers]
+
+
+def _apply_silence_breaks(
+    schedule: LayerSchedule | None,
+    silence_breaks: list[int],
+    layer_ids: list[str],
+    *,
+    total_bars: int,
+) -> LayerSchedule | None:
+    if schedule is None or not silence_breaks:
+        return schedule
+    breaks = sorted({b for b in silence_breaks if 0 <= b < total_bars})
+    if not breaks:
+        return schedule
+    melodic_ids = [iid for iid in layer_ids if iid in {
+        "melody", "countermelody", "echo_synth", "arp_synth", "chord_stab", "synth_pluck",
+    }]
+    if not melodic_ids:
+        return schedule
+    by_bar: dict[int, dict[str, list[str]]] = {
+        e.bar: {"add": list(e.add), "remove": list(e.remove)}
+        for e in schedule.entries
+    }
+    for bar in breaks:
+        row = by_bar.setdefault(bar, {"add": [], "remove": []})
+        for iid in melodic_ids:
+            if iid not in row["remove"]:
+                row["remove"].append(iid)
+        if bar + 1 < total_bars:
+            nxt = by_bar.setdefault(bar + 1, {"add": [], "remove": []})
+            for iid in melodic_ids:
+                if iid not in nxt["add"]:
+                    nxt["add"].append(iid)
+    entries = [
+        LayerScheduleEntry(bar=bar, add=v["add"], remove=v["remove"])
+        for bar, v in sorted(by_bar.items())
+        if v["add"] or v["remove"]
+    ]
+    return schedule.model_copy(update={"entries": entries})
+
+
+def _apply_tension_points(
+    schedule: LayerSchedule | None,
+    tension_points: list[int],
+    layer_ids: list[str],
+    *,
+    total_bars: int,
+) -> LayerSchedule | None:
+    if schedule is None or not tension_points or "fx_riser" not in layer_ids:
+        return schedule
+    points = sorted({b for b in tension_points if 0 <= b < total_bars})
+    if not points:
+        return schedule
+    by_bar: dict[int, dict[str, list[str]]] = {
+        e.bar: {"add": list(e.add), "remove": list(e.remove)}
+        for e in schedule.entries
+    }
+    for bar in points:
+        row = by_bar.setdefault(bar, {"add": [], "remove": []})
+        if "fx_riser" not in row["add"]:
+            row["add"].append("fx_riser")
+        if bar + 1 < total_bars:
+            nxt = by_bar.setdefault(bar + 1, {"add": [], "remove": []})
+            if "fx_riser" not in nxt["remove"]:
+                nxt["remove"].append("fx_riser")
+    entries = [
+        LayerScheduleEntry(bar=bar, add=v["add"], remove=v["remove"])
+        for bar, v in sorted(by_bar.items())
+        if v["add"] or v["remove"]
+    ]
+    return schedule.model_copy(update={"entries": entries})
 
 
 def _mix_for(plan: OrchestrationPlan | None, instrument_id: str, default: float) -> float:
@@ -543,6 +656,10 @@ def arrangement_planner_node(state: SongState) -> dict:
         layers = _build_layers_from_orchestration(state, orchestration)
     else:
         layers = _build_layers_deterministic(state)
+    proposal = state.get("technical_proposal")
+    if proposal:
+        layers = _apply_call_response(layers, proposal.call_response_map)
+        layers = _apply_lead_hierarchy(layers, proposal.lead_hierarchy)
 
     layers = _ensure_texture_bed_layers(
         layers, structure, use_case, plan=orchestration, suppress_drums=suppress_drums,
@@ -580,6 +697,19 @@ def arrangement_planner_node(state: SongState) -> dict:
     from cadence.music.layer_schedule import sync_schedule_with_layer_specs
 
     schedule = sync_schedule_with_layer_specs(structure, layers, schedule)
+    if proposal:
+        schedule = _apply_silence_breaks(
+            schedule,
+            proposal.silence_breaks,
+            layer_ids,
+            total_bars=structure.total_bars,
+        )
+        schedule = _apply_tension_points(
+            schedule,
+            proposal.tension_points,
+            layer_ids,
+            total_bars=structure.total_bars,
+        )
 
     arrangement = ArrangementPlan(
         layers=layers,

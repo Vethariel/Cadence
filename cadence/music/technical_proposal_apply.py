@@ -30,6 +30,15 @@ from cadence.schemas.song_state import (
 )
 
 _TEXTURE_MODES = frozenset({"bedded", "staggered", "simultaneous", "compact"})
+_MOTIF_TRANSFORMS = frozenset({
+    "introduce", "sequence_up", "sequence_down", "invert", "fragment", "expand",
+    "climax", "resolve", "sparse", "ostinato", "augment", "call_response", "pedal",
+})
+_CADENCE_TYPES = frozenset({"authentic", "half", "deceptive", "plagal", "suspended"})
+_REGISTER_BANDS = frozenset({"low", "mid", "high", "wide"})
+_LEAD_IDS = frozenset({
+    "melody", "countermelody", "echo_synth", "arp_synth", "chord_stab", "synth_pluck",
+})
 _AGENT_DRUM = frozenset({
     "techno", "dubstep", "house", "breakbeat", "halftime", "dnb", "industrial", "default",
 })
@@ -143,6 +152,78 @@ def normalize_global_motif(degrees: list[int]) -> list[int]:
     return out if len(out) >= 3 else []
 
 
+def normalize_section_curve(curve: dict[str, float] | None) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for sid, val in (curve or {}).items():
+        key = (sid or "").strip().lower()
+        if not key:
+            continue
+        out[key] = round(max(0.0, min(1.0, float(val))), 3)
+    return out
+
+
+def normalize_motif_transform_plan(plan: dict[str, str] | None) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for sid, transform in (plan or {}).items():
+        key = (sid or "").strip().lower()
+        val = (transform or "").strip().lower()
+        if not key or val not in _MOTIF_TRANSFORMS:
+            continue
+        out[key] = val
+    return out
+
+
+def normalize_cadence_plan(plan: dict[str, str] | None) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for sid, cadence in (plan or {}).items():
+        key = (sid or "").strip().lower()
+        val = (cadence or "").strip().lower()
+        if not key or val not in _CADENCE_TYPES:
+            continue
+        out[key] = val
+    return out
+
+
+def normalize_lead_hierarchy(ids: list[str] | None) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for iid in ids or []:
+        key = (iid or "").strip().lower()
+        if key and key in _LEAD_IDS and key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out[:6]
+
+
+def normalize_register_plan(plan: dict[str, str] | None) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for iid, band in (plan or {}).items():
+        key = (iid or "").strip().lower()
+        val = (band or "").strip().lower()
+        if not key or val not in _REGISTER_BANDS:
+            continue
+        out[key] = val
+    return out
+
+
+def normalize_call_response_map(plan: dict[str, str] | None) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for sid, pair in (plan or {}).items():
+        key = (sid or "").strip().lower()
+        val = (pair or "").strip().lower()
+        if not key or ":" not in val:
+            continue
+        caller, responder = [x.strip() for x in val.split(":", 1)]
+        if caller in _LEAD_IDS and responder in _LEAD_IDS and caller != responder:
+            out[key] = f"{caller}:{responder}"
+    return out
+
+
+def normalize_bar_points(points: list[int] | None, *, limit: int = 32) -> list[int]:
+    cleaned = sorted({max(0, int(p)) for p in (points or [])})
+    return cleaned[:limit]
+
+
 def format_composition_patterns_for_llm() -> str:
     """Catálogo de patrones para que technical_spec fije la composición rítmica/armónica."""
     from cadence.music.composition_archetypes import format_archetypes_for_llm
@@ -167,6 +248,14 @@ def format_composition_patterns_for_llm() -> str:
         "texture_mode: bedded | staggered | simultaneous | compact",
         f"composition_archetype (opcional): {format_archetypes_for_llm()}",
         "global_motif (opcional): 3–5 enteros 0–6 (grados de escala del motivo principal).",
+        "section_intensity_curve (opcional): {section_id: 0..1}",
+        "rhythmic_density_curve (opcional): {section_id: 0..1}",
+        "motif_transform_plan (opcional): {section_id: transform_id}",
+        "cadence_plan (opcional): {section_id: authentic|half|deceptive|plagal|suspended}",
+        "lead_hierarchy (opcional): [melody, countermelody, ...]",
+        "register_plan (opcional): {instrument_id: low|mid|high|wide}",
+        "call_response_map (opcional): {section_id: 'caller:responder'}",
+        "silence_breaks / tension_points (opcional): [bar_idx_global,...]",
     ]
     return "\n".join(lines)
 
@@ -219,6 +308,33 @@ def normalize_technical_proposal_composition(proposal: TechnicalProposal) -> Tec
     motif = normalize_global_motif(proposal.global_motif)
     if motif:
         updates["global_motif"] = motif
+    section_curve = normalize_section_curve(proposal.section_intensity_curve)
+    if section_curve:
+        updates["section_intensity_curve"] = section_curve
+    rhythm_curve = normalize_section_curve(proposal.rhythmic_density_curve)
+    if rhythm_curve:
+        updates["rhythmic_density_curve"] = rhythm_curve
+    transforms = normalize_motif_transform_plan(proposal.motif_transform_plan)
+    if transforms:
+        updates["motif_transform_plan"] = transforms
+    cadences = normalize_cadence_plan(proposal.cadence_plan)
+    if cadences:
+        updates["cadence_plan"] = cadences
+    hierarchy = normalize_lead_hierarchy(proposal.lead_hierarchy)
+    if hierarchy:
+        updates["lead_hierarchy"] = hierarchy
+    registers = normalize_register_plan(proposal.register_plan)
+    if registers:
+        updates["register_plan"] = registers
+    call_response = normalize_call_response_map(proposal.call_response_map)
+    if call_response:
+        updates["call_response_map"] = call_response
+    silence_breaks = normalize_bar_points(proposal.silence_breaks)
+    if silence_breaks:
+        updates["silence_breaks"] = silence_breaks
+    tension_points = normalize_bar_points(proposal.tension_points)
+    if tension_points:
+        updates["tension_points"] = tension_points
     mode = snap_scale_mode(proposal.mode)
     if mode:
         updates["mode"] = mode

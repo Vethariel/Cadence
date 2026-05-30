@@ -834,7 +834,7 @@ def validate_orchestration(
     composition_archetype: str | None = None,
     lock_llm_ensemble: bool = False,
 ) -> OrchestrationPlan:
-    """Corrige IDs, timbres GM, ritmo y presupuesto; respeta solo capas activas del plan."""
+    """Corrige IDs/timbres y coherencia; puede preservar íntegro el plan del LLM."""
     from cadence.music.style_archetype import infer_composition_archetype
     from cadence.schemas.song_state import GenerationStrategies
 
@@ -857,16 +857,17 @@ def validate_orchestration(
         "raw_prompt": raw_prompt,
     }
 
-    plan = enrich_orchestration_from_strategies(
-        plan,
-        strategies if isinstance(strategies, GenerationStrategies) else None,
-        energy_level=energy_level,
-        use_case=use_case,
-        generation_seed=generation_seed,
-        style_profile=style_profile,
-        raw_prompt=raw_prompt,
-        composition_archetype=archetype,
-    )
+    if not lock_llm_ensemble:
+        plan = enrich_orchestration_from_strategies(
+            plan,
+            strategies if isinstance(strategies, GenerationStrategies) else None,
+            energy_level=energy_level,
+            use_case=use_case,
+            generation_seed=generation_seed,
+            style_profile=style_profile,
+            raw_prompt=raw_prompt,
+            composition_archetype=archetype,
+        )
     from cadence.schemas.song_state import CreativeVariationBounds
 
     from cadence.music.style_profile import build_genre_mix
@@ -919,7 +920,7 @@ def validate_orchestration(
     from cadence.music.genre_orchestration import optional_layer_genre_score
 
     max_total = max_optional + len(CORE_INSTRUMENTS)
-    if len(by_id) > max_total:
+    if not lock_llm_ensemble and len(by_id) > max_total:
         trim_candidates = [
             iid for iid in by_id
             if iid not in protected and iid not in CORE_INSTRUMENTS
@@ -944,23 +945,24 @@ def validate_orchestration(
 
     from cadence.music.harmonic_coherence import apply_lead_support_cap
 
-    allowed_ids = apply_lead_support_cap(
-        set(by_id.keys()),
-        energy_level=energy_level,
-        use_case=use_case,
-        protected=protected,
-        composition_archetype=archetype,
-    )
-    for iid in list(by_id.keys()):
-        if iid not in allowed_ids and iid not in protected:
-            del by_id[iid]
-    if allowed_pool:
+    if not lock_llm_ensemble:
+        allowed_ids = apply_lead_support_cap(
+            set(by_id.keys()),
+            energy_level=energy_level,
+            use_case=use_case,
+            protected=protected,
+            composition_archetype=archetype,
+        )
         for iid in list(by_id.keys()):
-            if iid not in allowed_pool and iid not in protected:
+            if iid not in allowed_ids and iid not in protected:
                 del by_id[iid]
+        if allowed_pool:
+            for iid in list(by_id.keys()):
+                if iid not in allowed_pool and iid not in protected:
+                    del by_id[iid]
 
     lead_present = [iid for iid in LEAD_OPTIONALS if iid in by_id]
-    if len(lead_present) > max_lead:
+    if not lock_llm_ensemble and len(lead_present) > max_lead:
         for iid in ("fx_riser", "perc_aux", "synth_pluck", "chord_stab", "echo_synth", "countermelody", "arp_synth"):
             if len(lead_present) <= max_lead:
                 break

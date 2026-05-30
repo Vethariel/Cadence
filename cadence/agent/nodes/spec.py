@@ -4,6 +4,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from cadence.config import settings
+from cadence.analysis.benchmark_examples import format_inspiration_profiles_for_llm
 from cadence.music.creative_brief import format_creative_brief_for_technical
 from cadence.music.genre_catalog import format_genre_catalog_for_llm
 from cadence.music.seed_policy import node_temperature
@@ -71,6 +72,7 @@ def technical_spec_node(state: SongState) -> dict:
         energy_level=energy_guess,
     )
     patterns_catalog = format_composition_patterns_for_llm()
+    inspiration_catalog = format_inspiration_profiles_for_llm()
 
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
@@ -86,6 +88,7 @@ def technical_spec_node(state: SongState) -> dict:
         f"{form_catalog}\n\n"
         f"{orch_catalog}\n\n"
         f"{patterns_catalog}\n\n"
+        f"{inspiration_catalog}\n\n"
         "Reglas — composición COMPLETA (el código solo valida y genera notas):\n"
         "- Rellena forma, géneros, energía, orquestación (instruments[]) Y patrones rítmicos/armónicos.\n"
         "- El prompt original manda si trae BPM, tonalidad, compás o secciones explícitas.\n"
@@ -95,11 +98,20 @@ def technical_spec_node(state: SongState) -> dict:
         "- structure_form: UN id del catálogo de formas (prioriza sugeridas).\n"
         "- structure: solo si el usuario listó secciones; si no, [].\n"
         "- instruments[]: TODAS las capas activas con instrument_id, role, gm_program, active.\n"
+        "- Define un instrumento predominante: exactamente 1 capa lead principal y claramente activa.\n"
         "- drum_pattern y bass_pattern: OBLIGATORIOS si hay drums o bass activos.\n"
         "- harmony_pool: OBLIGATORIO (define la armonía de toda la pieza).\n"
         "- Patrones de capa (arp/stab/perc/pluck/counter/echo): rellena si esa capa está active.\n"
         "- texture_mode y composition_archetype: elige según brief (no dejes vacío salvo duda).\n"
         "- global_motif: 3–5 grados 0–6 que definan el tema (ej. [0,2,4,2] en menor).\n"
+        "- section_intensity_curve: define intensidad 0..1 por section_id.\n"
+        "- rhythmic_density_curve: define densidad rítmica 0..1 por section_id.\n"
+        "- motif_transform_plan: transform por sección (sequence_up, fragment, resolve, etc.).\n"
+        "- cadence_plan: tipo de cadencia por sección (authentic/half/deceptive/plagal/suspended).\n"
+        "- lead_hierarchy: orden de protagonismo lead (ej. melody > countermelody > arp_synth).\n"
+        "- register_plan: registro por capa (low|mid|high|wide).\n"
+        "- call_response_map: relación sección->caller:responder (instrument_id válidos).\n"
+        "- silence_breaks y tension_points: compases globales clave para respiración dramática.\n"
         "- ensemble_concept + melody_texture + reasoning (2–3 frases de decisiones).\n"
         "- bars_per_section / target_total_bars: opcional según duración.\n"
         "Responde SOLO con el objeto TechnicalProposal estructurado."

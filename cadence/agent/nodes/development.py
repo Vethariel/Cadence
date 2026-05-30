@@ -42,6 +42,9 @@ def development_planner_node(state: SongState) -> dict:
         bars_per_section=structure.bars_per_section,
         use_case=intent.use_case,
         composition_archetype=archetype,
+        section_intensity_curve=proposal.section_intensity_curve if proposal else None,
+        rhythmic_density_curve=proposal.rhythmic_density_curve if proposal else None,
+        motif_transform_plan=proposal.motif_transform_plan if proposal else None,
     )
 
     from cadence.music.technical_proposal_apply import snap_texture_mode

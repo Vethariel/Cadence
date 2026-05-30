@@ -74,6 +74,54 @@ def test_validate_trims_excess_optionals_for_loop():
     print("✓ test_validate_trims_excess_optionals_for_loop OK")
 
 
+def test_validate_preserves_llm_orchestration_without_trimming_or_injection():
+    plan = _plan(
+        ensemble_concept="technical_spec/llm",
+        instruments=[
+            InstrumentAssignment(instrument_id="drums", gm_program=0, active=True),
+            InstrumentAssignment(instrument_id="bass", gm_program=43, active=True),
+            InstrumentAssignment(instrument_id="melody", gm_program=80, active=True),
+            InstrumentAssignment(instrument_id="pad", gm_program=89, active=True),
+            InstrumentAssignment(instrument_id="countermelody", gm_program=81, active=True),
+            InstrumentAssignment(instrument_id="echo_synth", gm_program=82, active=True),
+            InstrumentAssignment(instrument_id="arp_synth", gm_program=98, active=True),
+            InstrumentAssignment(instrument_id="chord_stab", gm_program=62, active=True),
+            InstrumentAssignment(instrument_id="synth_pluck", gm_program=90, active=True),
+        ],
+    )
+    validated = validate_orchestration(
+        plan,
+        use_case="loop",
+        energy_level=2,
+        generation_seed=7,
+        lock_llm_ensemble=True,
+        strategies=GenerationStrategies(
+            generation_seed=7,
+            drum_pattern="techno_a",
+            bass_pattern="driving_a",
+            arp_pattern="sixteenth_a",
+            counter_pattern="syncopated_a",
+            stab_pattern="offbeat_a",
+            perc_pattern="syncopated_a",
+            pluck_pattern="eighth_a",
+            echo_source="melody",
+        ),
+    )
+    ids = {a.instrument_id for a in validated.instruments if a.active}
+    assert ids == {
+        "drums",
+        "bass",
+        "melody",
+        "pad",
+        "countermelody",
+        "echo_synth",
+        "arp_synth",
+        "chord_stab",
+        "synth_pluck",
+    }
+    print("✓ test_validate_preserves_llm_orchestration_without_trimming_or_injection OK")
+
+
 def test_timbre_catalog_covers_melodic_instruments():
     import cadence.instruments  # noqa: F401
     for iid in list_instruments():
@@ -452,6 +500,7 @@ def test_lofi_prompt_guitar_piano_hints():
 if __name__ == "__main__":
     test_validate_orchestration_no_mandatory_core()
     test_validate_trims_excess_optionals_for_loop()
+    test_validate_preserves_llm_orchestration_without_trimming_or_injection()
     test_timbre_catalog_covers_melodic_instruments()
     test_resolve_timbre_snaps_to_catalog()
     test_validate_uses_catalog_display_name()

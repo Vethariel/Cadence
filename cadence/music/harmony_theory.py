@@ -99,6 +99,30 @@ def progression_for_role(
     return templates[base]
 
 
+def apply_cadence_bias(
+    progression: list[tuple[int, str]],
+    mode: str,
+    cadence_type: str | None,
+) -> list[tuple[int, str]]:
+    """Ajusta el cierre armónico de una sección según cadencia solicitada."""
+    cadence = (cadence_type or "").strip().lower()
+    if not progression or not cadence:
+        return progression
+    out = list(progression)
+    tonic_quality = "minor" if harmony_template_key(mode) == "minor" else "major"
+    if cadence == "authentic":
+        out[-2:] = [(4, "dominant"), (0, tonic_quality)]
+    elif cadence == "half":
+        out[-1] = (4, "dominant")
+    elif cadence == "deceptive":
+        out[-2:] = [(4, "dominant"), (5, "major" if tonic_quality == "minor" else "minor")]
+    elif cadence == "plagal":
+        out[-2:] = [(3, tonic_quality), (0, tonic_quality)]
+    elif cadence == "suspended":
+        out[-1] = (0, tonic_quality)
+    return out
+
+
 def _bars_per_chord(
     harmonic_tension: float,
     narrative_role: str,
@@ -125,8 +149,10 @@ def build_section_harmony(
     mode: str,
     bars_per_chord: int = 4,
     harmony_pool: str | None = None,
+    cadence_type: str | None = None,
 ) -> SectionHarmony:
     raw = progression_for_role(narrative_role, harmonic_tension, mode, harmony_pool)
+    raw = apply_cadence_bias(raw, mode, cadence_type)
     progression = [
         ChordSpec(root_degree=deg, quality=qual, bars=bars_per_chord)
         for deg, qual in raw
@@ -151,6 +177,7 @@ def build_harmony_plan(
     bars_per_chord_default: int = 4,
     harmony_pool: str | None = None,
     use_case: str = "game",
+    cadence_plan: dict[str, str] | None = None,
 ) -> HarmonyPlan:
     """Genera HarmonyPlan determinista desde estructura + narrativa."""
     section_harmonies: list[SectionHarmony] = []
@@ -162,6 +189,7 @@ def build_harmony_plan(
         role = intent.narrative_role if intent else "establish"
         tension = intent.harmonic_tension if intent else 0.4
         bars_per_chord = _bars_per_chord(tension, role, loop_default)
+        cadence = (cadence_plan or {}).get(section_id)
 
         if uc == "loop" and role in ("reflection", "silence", "establish"):
             progression = _loop_progression(mode, max(2, min(bars_per_chord, 4)))
@@ -178,6 +206,7 @@ def build_harmony_plan(
             mode=mode,
             bars_per_chord=bars_per_chord,
             harmony_pool=harmony_pool,
+            cadence_type=cadence,
         ))
 
     return HarmonyPlan(

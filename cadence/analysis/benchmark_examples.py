@@ -1,4 +1,4 @@
-"""Prompts de benchmark alineados con el corpus MIDI y arquetipos de referencia."""
+"""Prompts de benchmark y perfiles de inspiración para technical_spec."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from pathlib import Path
 from cadence.analysis.benchmark_profiles import ARCHETYPE_DEFS, infer_archetype
 
 PROMPTS_PATH = Path(__file__).resolve().parents[2] / "examples" / "benchmark_prompts.json"
+INSPIRATION_PROFILES_PATH = Path(__file__).with_name("inspiration_profiles.json")
 
 
 @dataclass(frozen=True)
@@ -88,16 +89,20 @@ def export_title_for_prompt(raw_prompt: str, use_case: str, mood: str) -> str:
 def validate_prompt_catalog() -> list[str]:
     """Errores de alineación prompt ↔ arquetipo ↔ refs MIDI."""
     errors: list[str] = []
+    seen_refs: set[str] = set()
     for bp in load_benchmark_prompts():
         if bp.archetype not in ARCHETYPE_DEFS:
             errors.append(f"{bp.id}: arquetipo desconocido {bp.archetype}")
             continue
         refs = set(ARCHETYPE_DEFS[bp.archetype]["references"])
+        if not bp.midi_refs:
+            errors.append(f"{bp.id}: debe declarar al menos 1 midi_ref")
         for mid in bp.midi_refs:
             if mid not in refs:
                 errors.append(
                     f"{bp.id}: {mid} no está en refs de {bp.archetype} ({refs})",
                 )
+            seen_refs.add(mid)
         inferred = infer_archetype_for_benchmark_prompt(bp)
         if inferred != bp.archetype:
             errors.append(
@@ -105,4 +110,50 @@ def validate_prompt_catalog() -> list[str]:
                 f"(use_case={bp.expected_use_case}, energy={bp.expected_energy}, "
                 f"tags={bp.style_hints})",
             )
+    all_refs = {
+        ref
+        for archetype in ARCHETYPE_DEFS.values()
+        for ref in archetype.get("references", [])
+    }
+    missing_refs = sorted(all_refs - seen_refs)
+    if missing_refs:
+        errors.append(
+            "catalogo incompleto: faltan refs MIDI en benchmark_prompts.json → "
+            + ", ".join(missing_refs),
+        )
     return errors
+
+
+def load_inspiration_profiles(path: Path | None = None) -> dict:
+    """Perfiles abstractos (sin MIDI) para inspirar decisiones del technical_spec."""
+    src = path or INSPIRATION_PROFILES_PATH
+    data = json.loads(src.read_text(encoding="utf-8"))
+    return data
+
+
+def format_inspiration_profiles_for_llm(path: Path | None = None) -> str:
+    """
+    Catálogo de inspiración abstracta para el LLM técnico (sin archivos MIDI).
+    """
+    data = load_inspiration_profiles(path)
+    profiles = data.get("profiles", {})
+    lines = [
+        "=== PERFILES DE INSPIRACIÓN ESTILÍSTICA (abstractos, sin MIDI) ===",
+        "Usa estos rangos y rasgos como guía compositiva; NO copies frases literales.",
+    ]
+    for archetype, p in profiles.items():
+        metrics = p.get("target_metrics", {})
+        cues = p.get("style_cues", [])
+        lines.append(f"- {archetype}:")
+        if metrics:
+            compact = ", ".join(
+                f"{k}={v[0]}..{v[1]}"
+                for k, v in metrics.items()
+                if isinstance(v, list) and len(v) == 2
+            )
+            if compact:
+                lines.append(f"  métricas objetivo: {compact}")
+        if cues:
+            lines.append(f"  claves de estilo: {', '.join(str(x) for x in cues[:6])}")
+    lines.append("Prioriza consistencia narrativa + variación motívica sobre imitación de obras.")
+    return "\n".join(lines)
