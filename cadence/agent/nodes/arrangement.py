@@ -22,6 +22,7 @@ from cadence.music.layer_schedule import (
     DENSITY_PLUCK,
     build_layer_schedule,
 )
+from cadence.music.texture_policy import arrangement_required_layers
 
 CORE_LAYERS = [
     LayerSpec(
@@ -121,6 +122,36 @@ def _effective_instruments(state: SongState, plan: OrchestrationPlan) -> set[str
     )
 
 
+def _ensure_texture_bed_layers(
+    layers: list[LayerSpec],
+    structure,
+    use_case: str,
+) -> list[LayerSpec]:
+    """Loop/cutscene: pad en todas las secciones para cama continua."""
+    if (use_case or "game").lower() not in ("loop", "cutscene"):
+        return layers
+    ids = {l.instrument_id for l in layers}
+    all_sections = list(structure.sections)
+    out = list(layers)
+    if "pad" not in ids:
+        out.append(LayerSpec(
+            instrument_id="pad",
+            active_sections=all_sections or ["*"],
+            pattern_strategy="chord_sustain",
+            mix_level=-14.0,
+            min_density=0.0,
+        ))
+    if "bass" not in ids:
+        out.append(LayerSpec(
+            instrument_id="bass",
+            active_sections=["*"],
+            pattern_strategy="loop_1bar",
+            mix_level=-6.0,
+            min_density=0.0,
+        ))
+    return out
+
+
 def _build_layers_from_orchestration(
     state: SongState,
     plan: OrchestrationPlan,
@@ -188,7 +219,9 @@ def _build_layers_from_orchestration(
         if sections:
             layers.append(_layer_spec(iid, sections, plan))
 
-    return layers
+    return _ensure_texture_bed_layers(
+        layers, structure, state["intent"].use_case,
+    )
 
 
 def _build_layers_deterministic(state: SongState) -> list[LayerSpec]:
@@ -349,7 +382,7 @@ def _build_layers_deterministic(state: SongState) -> list[LayerSpec]:
                 min_density=DENSITY_PLUCK,
             ))
 
-    return layers
+    return _ensure_texture_bed_layers(layers, structure, use_case)
 
 
 def arrangement_planner_node(state: SongState) -> dict:
@@ -367,12 +400,32 @@ def arrangement_planner_node(state: SongState) -> dict:
     intent = state.get("intent")
     use_case = intent.use_case if intent else "game"
 
+    profile = state.get("style_profile")
+    suppress_drums = percussion_suppressed(
+        use_case=use_case,
+        energy_level=energy,
+        style_profile=profile,
+    )
+
     if orchestration:
         layers = _build_layers_from_orchestration(state, orchestration)
     else:
         layers = _build_layers_deterministic(state)
 
+    layers = _ensure_texture_bed_layers(layers, structure, use_case)
+
+    development = state.get("development")
+    texture_mode = development.texture_mode if development else "staggered"
     layer_ids = [l.instrument_id for l in layers]
+    optional_count = len([i for i in layer_ids if i not in ("drums", "bass", "melody")])
+    if (
+        development
+        and use_case == "game"
+        and energy >= 4
+        and optional_count >= 4
+        and texture_mode != "bedded"
+    ):
+        texture_mode = "simultaneous"
     schedule = build_layer_schedule(
         structure,
         layer_ids,
@@ -380,12 +433,15 @@ def arrangement_planner_node(state: SongState) -> dict:
         generation_seed=seed,
         energy_level=energy,
         use_case=use_case,
+        development=development,
+        texture_mode=texture_mode,
+        percussion_suppressed=suppress_drums,
     )
 
     arrangement = ArrangementPlan(
         layers=layers,
         layer_schedule=schedule,
-        required_layers=["drums", "bass", "melody"],
+        required_layers=arrangement_required_layers(use_case, suppress_drums),
     )
 
     return {"arrangement": arrangement}

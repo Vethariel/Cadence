@@ -157,6 +157,21 @@ def instrument_planner_node(state: SongState) -> dict:
         "Responde SOLO con el objeto estructurado."
     ))
 
+    dev = state.get("development")
+    dev_hint = ""
+    if dev:
+        seg_lines = []
+        for sd in dev.sections:
+            if sd.segments:
+                seg_lines.append(
+                    f"  {sd.section_id}: {len(sd.segments)} micro-arcos de orquestación"
+                )
+        if seg_lines:
+            dev_hint = (
+                f"\nDesarrollo ({dev.texture_mode}): el schedule añadirá/quitará capas "
+                f"por segmento:\n" + "\n".join(seg_lines) + "\n"
+            )
+
     human_parts = [
         f"Prompt: {intent.raw_prompt}",
         f"Uso: {intent.use_case} | Mood: {intent.mood}",
@@ -164,6 +179,7 @@ def instrument_planner_node(state: SongState) -> dict:
         f"Key: {proposal.key} {proposal.mode} | BPM: {proposal.bpm}",
         f"Secciones: {sections}",
         f"Narrativa: {logline} (arco: {arc})",
+        dev_hint,
         "",
         format_profile_for_llm(profile),
         "",

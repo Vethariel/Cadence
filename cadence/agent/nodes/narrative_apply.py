@@ -158,10 +158,17 @@ def melody_should_play(intent: SectionIntent | None) -> bool:
     return intent.density >= 0.2
 
 
-def melody_rest_ratio(intent: SectionIntent | None) -> float:
+def melody_rest_ratio(intent: SectionIntent | None, *, use_case: str = "game") -> float:
     """Proporción sugerida de silencios en el patrón melódico."""
+    uc = (use_case or "game").lower()
     if intent is None:
-        return 0.1
+        return 0.15 if uc in ("loop", "cutscene") else 0.1
+    if uc in ("loop", "cutscene"):
+        if intent.density < 0.35:
+            return 0.28
+        if intent.density < 0.55:
+            return 0.18
+        return 0.12
     if intent.density < 0.35:
         return 0.45
     if intent.density < 0.55:
@@ -177,7 +184,7 @@ def narrative_melody_hint(intent: SectionIntent | None) -> str:
     duration_hint = "notas cortas (1-2 steps)" if intent.density >= 0.7 else (
         "notas largas (4 steps)" if intent.density < 0.4 else "notas medias (2 steps)"
     )
-    rest_pct = int(melody_rest_ratio(intent) * 100)
+    rest_pct = int(melody_rest_ratio(intent, use_case="game") * 100)
     return (
         f"role={intent.narrative_role}, emotion={intent.emotional_target}, "
         f"density={intent.density:.1f} → {duration_hint}, ~{rest_pct}% silencios"

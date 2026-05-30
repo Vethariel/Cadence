@@ -354,10 +354,19 @@ def build_development_plan(
         )
         for s in sections
     ]
+    from cadence.music.texture_policy import infer_texture_mode
+
+    texture_mode = infer_texture_mode(
+        use_case=use_case,
+        energy_level=energy_level,
+        narrative_sections=narrative_sections,
+    )
+
     return DevelopmentPlan(
         global_motif=motif,
         sections=section_devs,
         generation_seed=generation_seed,
+        texture_mode=texture_mode,
     )
 
 

@@ -23,12 +23,14 @@ def harmony_planner_node(state: SongState) -> dict:
 
     intent_map = section_intent_map(narrative)
 
+    intent = state["intent"]
     harmony = build_harmony_plan(
         sections=structure.sections,
         key=key,
         mode=mode,
         narrative_sections=intent_map,
         harmony_pool=state.get("strategies").harmony_pool if state.get("strategies") else None,
+        use_case=intent.use_case,
     )
 
     return {"harmony": harmony}

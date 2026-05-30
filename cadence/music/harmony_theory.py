@@ -142,6 +142,15 @@ def build_section_harmony(
     return SectionHarmony(section_id=section_id, progression=progression)
 
 
+def _loop_progression(mode: str, bars_per_chord: int) -> list[ChordSpec]:
+    """Al menos dos cambios de acorde en loops (benchmark: chord_changes > 0)."""
+    if mode == "minor":
+        raw = [(0, "minor"), (5, "major"), (3, "minor"), (4, "dominant")]
+    else:
+        raw = [(0, "major"), (4, "major"), (5, "minor"), (3, "major")]
+    return [ChordSpec(root_degree=d, quality=q, bars=bars_per_chord) for d, q in raw]
+
+
 def build_harmony_plan(
     sections: list[str],
     key: str,
@@ -149,15 +158,26 @@ def build_harmony_plan(
     narrative_sections: dict | None = None,
     bars_per_chord_default: int = 4,
     harmony_pool: str | None = None,
+    use_case: str = "game",
 ) -> HarmonyPlan:
     """Genera HarmonyPlan determinista desde estructura + narrativa."""
     section_harmonies: list[SectionHarmony] = []
+    uc = (use_case or "game").lower()
+    loop_default = 2 if uc == "loop" else bars_per_chord_default
 
     for section_id in sections:
         intent = narrative_sections.get(section_id) if narrative_sections else None
         role = intent.narrative_role if intent else "establish"
         tension = intent.harmonic_tension if intent else 0.4
-        bars_per_chord = _bars_per_chord(tension, role, bars_per_chord_default)
+        bars_per_chord = _bars_per_chord(tension, role, loop_default)
+
+        if uc == "loop" and role in ("reflection", "silence", "establish"):
+            progression = _loop_progression(mode, max(2, min(bars_per_chord, 4)))
+            section_harmonies.append(SectionHarmony(
+                section_id=section_id,
+                progression=progression,
+            ))
+            continue
 
         section_harmonies.append(build_section_harmony(
             section_id=section_id,

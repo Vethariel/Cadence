@@ -267,4 +267,12 @@ flowchart TD
 
 ### Resultados post-mejoras
 
-_(pendiente — rellenar tras Fase 5)_
+**Implementado (Fase 1 + 2, mayo 2026):**
+
+- `texture_policy.py`: modos bedded / staggered / simultaneous / compact
+- `DevelopmentPlan.texture_mode` + schedule por `DevelopmentSegment`
+- Loop: armonía con ≥2 acordes; core schedule bass+melody+pad
+- Arrangement: cama pad/bass en loop/cutscene; simultaneous si ≥4 opcionales
+- `melody_post` / `melody_rest_ratio`: pisos por use_case
+
+Regenerar suite y ejecutar `midi_benchmark --suite` para medir delta.

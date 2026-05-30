@@ -53,6 +53,14 @@ def _entry_stagger(layer_id: str, role: str) -> int:
     return LAYER_STAGGER.get(layer_id, 0)
 
 
+def _merge_pending(
+    base: list[tuple[int, str, str]],
+    extra: list[tuple[int, str, str]],
+) -> list[tuple[int, str, str]]:
+    """Fusiona entradas de segmentos de desarrollo (mismo compás: extra después)."""
+    return sorted(base + extra, key=lambda x: (x[0], 0 if x[1] == "remove" else 1, x[2]))
+
+
 def ms_per_bar(bpm: int) -> float:
     return (60000 / bpm) * 4
 
@@ -201,17 +209,34 @@ def build_layer_schedule(
     genre_tags: list[str] | None = None,
     energy_level: int = 3,
     use_case: str = "game",
+    *,
+    development: object | None = None,
+    texture_mode: str = "staggered",
+    percussion_suppressed: bool = False,
 ) -> LayerSchedule:
     """
     Construye entradas/salidas de capas a lo largo de la pieza.
-    Las capas opcionales entran escalonadas dentro de cada sección.
+    Las capas opcionales entran escalonadas o en bloque según texture_mode.
     """
+    from cadence.music.texture_policy import (
+        build_segment_schedule_pending,
+        entry_stagger_for_texture,
+        schedule_core_layers,
+    )
+
     available = set(layer_ids)
     intent_map = narrative_sections or {}
-    active: set[str] = set(CORE_LAYERS) & available
-    del genre_tags  # compatibilidad; umbrales por energía/rol
+    core_ids = schedule_core_layers(
+        use_case=use_case,
+        energy_level=energy_level,
+        percussion_suppressed=percussion_suppressed,
+    )
+    active: set[str] = set(core_ids) & available
+    del genre_tags
     genre_adj = _density_thresholds_for_piece(energy_level, use_case)
     thresholds = _layer_thresholds(genre_adj)
+    if texture_mode == "bedded":
+        thresholds = {**thresholds, "pad": min(thresholds.get("pad", 0.25), 0.12)}
 
     global_bar = 0
     total_bars = structure.total_bars or sum(structure.bars_per_section.values())
@@ -237,14 +262,22 @@ def build_layer_schedule(
             thresholds=thresholds,
         )
 
+        if texture_mode == "bedded":
+            for lid in ("pad", "bass"):
+                if lid in available and lid not in candidates and lid not in active:
+                    candidates.append(lid)
+
         section_end = global_bar + bars
         for lid in to_remove:
+            if texture_mode == "bedded" and lid in ("pad", "bass"):
+                continue
             pending.append((global_bar, "remove", lid))
             active.discard(lid)
 
         for lid in candidates:
+            stagger = entry_stagger_for_texture(texture_mode, lid, role)
             entry_bar = min(
-                global_bar + _entry_stagger(lid, role),
+                global_bar + stagger,
                 max(global_bar, section_end - 1),
             )
             pending.append((entry_bar, "add", lid))
@@ -262,8 +295,21 @@ def build_layer_schedule(
 
         global_bar += bars
 
+    if development is not None:
+        segment_pending = build_segment_schedule_pending(
+            structure,
+            development,
+            available,
+            intent_map,
+            use_case=use_case,
+            texture_mode=texture_mode,
+        )
+        pending = _merge_pending(pending, segment_pending)
+
     by_bar: dict[int, dict[str, list[str]]] = defaultdict(lambda: {"add": [], "remove": []})
-    for bar, action, lid in sorted(pending, key=lambda x: (x[0], x[1] == "add")):
+    for bar, action, lid in pending:
+        if lid in by_bar[bar][action]:
+            continue
         by_bar[bar][action].append(lid)
 
     entries = [
@@ -274,7 +320,7 @@ def build_layer_schedule(
 
     return LayerSchedule(
         entries=entries,
-        core_layers=[l for l in schedule_core_list() if l in available],
+        core_layers=[l for l in core_ids if l in available],
     )
 
 

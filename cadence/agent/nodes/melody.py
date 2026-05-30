@@ -247,7 +247,9 @@ def compose_melody_track(state: SongState) -> Track:
             bars = active_dev.phrase_length_bars
             if section_intent and section_intent.density >= 0.7:
                 bars = min(bars, 2)
-            rest_pct = int(melody_rest_ratio(section_intent) * 100)
+            rest_pct = int(melody_rest_ratio(
+                section_intent, use_case=intent.use_case,
+            ) * 100)
             seg_note = (
                 f", {len(dev.segments)} micro-arcos" if dev.segments else ""
             )

@@ -112,6 +112,7 @@ def fill_melody_gaps(
     scale_pitches: list[int],
     intent_map: dict,
     gap_threshold_ms: float | None = None,
+    use_case: str = "game",
 ) -> list[RhythmEvent]:
     """Inserta notas de paso en huecos grandes para bajar el rest ratio."""
     if len(events) < 2:
@@ -128,7 +129,7 @@ def fill_melody_gaps(
         prev = filled[-1]
         gap = _gap_ms(prev, nxt)
         intent = intent_map.get(prev.section)
-        max_ratio = melody_rest_ratio(intent)
+        max_ratio = melody_rest_ratio(intent, use_case=use_case)
         # Umbral más estricto en secciones densas
         threshold = gap_threshold_ms
         if _is_dense_section(prev.section, intent_map):
@@ -244,14 +245,17 @@ def _should_fill_gaps(intent_map: dict, use_case: str, melody_texture: str = "ba
 
 
 def _min_notes_per_bar(use_case: str, energy: int, melody_texture: str = "balanced") -> int:
+    uc = (use_case or "game").lower()
     if melody_texture == "sparse":
-        return 2
+        return 4 if uc == "loop" else 3
     if melody_texture in ("dense", "percussive"):
         if energy >= 5:
             return 8
         return 6 if energy >= 4 else 5
-    if use_case == "cutscene":
-        return 3
+    if uc == "loop":
+        return 4
+    if uc == "cutscene":
+        return 5
     if energy >= 5:
         return 6
     if energy >= 4:
@@ -286,7 +290,9 @@ def process_melody_events(
             min_notes_per_bar=_min_notes_per_bar(use_case, energy_level, melody_texture),
         )
     if _should_fill_gaps(intent_map, use_case, melody_texture):
-        events = fill_melody_gaps(events, bpm, scale_pitches, intent_map)
+        events = fill_melody_gaps(
+            events, bpm, scale_pitches, intent_map, use_case=use_case,
+        )
 
     events = limit_melody_leaps(
         events, scale_pitches, climax_sections, energy_level, use_case,

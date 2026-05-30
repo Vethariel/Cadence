@@ -238,7 +238,27 @@ def test_staggered_layer_entry():
 
 
 def test_chord_stab_compose():
+    from cadence.schemas.song_state import OrchestrationPlan, InstrumentAssignment
+    from cadence.agent.nodes.strategy import strategy_planner_node
+    from cadence.agent.nodes.development import development_planner_node
+
     state = _boss_fight_state()
+    state.update(strategy_planner_node(state))
+    state.update(development_planner_node(state))
+    state["strategies"] = GenerationStrategies(
+        generation_seed=state["generation_seed"], stab_pattern="offbeat",
+    )
+    state["orchestration_plan"] = OrchestrationPlan(
+        drum_pattern="techno",
+        bass_pattern="driving",
+        stab_pattern="offbeat",
+        instruments=[
+            InstrumentAssignment(instrument_id="drums", gm_program=0, active=True),
+            InstrumentAssignment(instrument_id="bass", gm_program=38, active=True),
+            InstrumentAssignment(instrument_id="melody", gm_program=81, active=True),
+            InstrumentAssignment(instrument_id="chord_stab", gm_program=62, active=True),
+        ],
+    )
     state["harmony"] = harmony_planner_node(state)["harmony"]
     state["arrangement"] = arrangement_planner_node(state)["arrangement"]
     stab_layer = next(

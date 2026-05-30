@@ -271,6 +271,10 @@ class DevelopmentPlan(BaseModel):
     global_motif: list[int] = Field(default_factory=list)
     sections: list[SectionDevelopment]
     generation_seed: int = 0
+    texture_mode: Literal["bedded", "staggered", "simultaneous", "compact"] = Field(
+        default="staggered",
+        description="Cama continua, escalonado, solapamiento alto o stack compacto.",
+    )
 
 
 class GenerationStrategies(BaseModel):
